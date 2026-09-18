@@ -1,0 +1,261 @@
+﻿<template>
+  <div class="@(Model.LowerClassName)-container">
+    <el-dialog v-model="state.showDialog" :width="800" draggable :close-on-click-modal="false">
+      <template #header>
+        <div style="color: #fff">
+          <span>{{ state.title }}</span>
+        </div>
+      </template>
+      <el-form :model="state.ruleForm" ref="ruleFormRef" label-width="auto" v-loading="state.loading">
+        <el-row :gutter="35">
+          @foreach (var column in Model.AddUpdateFields.Where(u => !u.IsStatus)) {
+          @:<el-col :xs="24" :sm="12" :md="12" :lg="12" :xl="12" class="mb20">
+            @:<el-form-item label="@column.ColumnComment" prop="@(column.LowerPropertyName)"@(column.GetFormRules)>
+              if (column.IsDatePicker) {
+              // 时间
+              @:<el-date-picker v-model="state.ruleForm.@(column.LowerPropertyName)" value-format="YYYY/MM/DD" placeholder="请选择@(column.ColumnComment)" :disabled="state.disabled" class="w100" />
+              } else if (column.IsInputNumber) {
+              // 数字
+              @:<el-input-number v-model="state.ruleForm.@(column.LowerPropertyName)" placeholder="请输入@(column.ColumnComment)" :min="0" :step="1"@(column.NetType.StartsWith("decimal") ? " :precision='2'" : "") :disabled="state.disabled" clearable class="w100" />
+              } else if (column.IsSwitch) {
+              // 开关
+              @:<el-switch v-model="state.ruleForm.@(column.LowerPropertyName)" active-value="1" inactive-value="0" :disabled="state.disabled" class="w100" />
+              } else if (column.IsConst) {
+              // 常量
+              @:<el-select v-model="state.ruleForm.@(column.LowerPropertyName)" :placeholder="'请选择@(column.ColumnComment)'" clearable@(column.Multiple ? " multiple" : "") :disabled="state.disabled" class="w100">
+                @:<el-option v-for="item in userInfo.getConstDataByTypeCode('@(column.DictConfig.Code)')" :key="item.code" :label="item.name" :value="item.code" />
+              @:</el-select>
+              } else if (column.IsDict || column.IsEnum) {
+              // 字典枚举
+              @:<g-sys-dict v-model="state.ruleForm.@(column.LowerPropertyName)" code="@(column.DictConfig.Code)" render-as="select" clearable@(column.Multiple ? " multiple" : "") :disabled="state.disabled" class="w100" />
+              } else if (column.IsTree) {
+              // 树组件
+              @:<el-cascader
+                    @::options="state.dropdownData.@(column.LowerPropertyName) ?? []"
+                    @::props="{ value: '@(Model.GetFirstLower(column.JoinConfig.LinkPropertyName))', label: '@(Model.GetFirstLower(column.JoinConfig.DisplayPropertyNames.Split(",").First()))', checkStrictly: true, emitPath: false }"
+                    @:v-model="state.ruleForm.@(column.LowerPropertyName)"
+                    @:placeholder="请选择@(column.ColumnComment)"
+                    @::disabled="state.disabled"
+                    @:clearable
+                    @:filterable
+                    @:class="w100">
+                @:<template #default="{ node, data }">
+                  @:<span>@(string.Join("-", column.JoinConfig.DisplayPropertyNames.Split(",").Select(x => $"{{{{ data.{Model.GetFirstLower(x)} }}}}")))</span>
+                  @:<span v-if="!node.isLeaf"> ({{ data.children.length }}) </span>
+                @:</template>
+              @:</el-cascader>
+              } else if (column.IsForeignKey) {
+              // 外键组件
+              var firstDisplayName = Model.GetFirstLower(column.JoinConfig.DisplayPropertyNames.Split(",").First());
+              var linkPropertyName = Model.GetFirstLower(column.JoinConfig.LinkPropertyName);
+              var leftJoinPropertyName = Model.GetFirstLower(column.LeftJoinPropertyName);
+              @:<pulldown-selecter
+                    @:v-model="state.ruleForm.@(column.LowerPropertyName)"
+                    @::default-options="[{ @(firstDisplayName): state.ruleForm.@(leftJoinPropertyName), @(linkPropertyName): state.ruleForm.@(column.LowerPropertyName)}]"
+                    @::fetch-options="handle@(column.JoinConfig.EntityName)Table"
+                    @::query-params="{ pageSize: 10 , all: true }"
+                    @:value-prop="@(linkPropertyName)"
+                    @:label-prop="@(firstDisplayName)"
+                    @:placeholder="选择@(column.ColumnComment)"
+                    @:filterable
+                    @:clearable
+                    @:class="w100">
+                @:<template #columns>
+                  @:<el-table-column prop="id" label="ID" width="150" />
+                  @:<el-table-column prop="@(firstDisplayName)" label="@(firstDisplayName)" width="150" />
+                @:</template>
+              @:</pulldown-selecter>
+              @:<!--
+              @:<el-select v-model="state.ruleForm.@(column.LowerPropertyName)" :placeholder="'请选择@(column.ColumnComment)'" clearable@(column.Multiple ? " multiple" : "") :disabled="state.disabled" class="w100">
+              @:  <el-option v-for="item in state.dropdownData.@(column.LowerPropertyName) ?? []" :key="item.@(linkPropertyName)" :label="item.@(firstDisplayName)" :value="item.@(linkPropertyName)" />
+              @:</el-select>
+              @:-->
+              } else if (column.IsUpload) {
+              // 文件上传
+              @:<el-upload
+                    @:list-type="picture-card"
+                    @::show-file-list="false"
+                    @::disabled="state.disabled"
+                    @::http-request="upload@(column.PropertyName)Handle"
+                    @:class="w100">
+                @:<img
+                     @:v-if="state.ruleForm.@(Model.GetFirstLower(column.LeftJoinPropertyName))?.url"
+                     @::src="state.ruleForm.@(Model.GetFirstLower(column.LeftJoinPropertyName)).url"
+                     @:@@click="
+                     @:  state.ruleForm.@(column.LowerPropertyName) = null;
+                     @:  state.ruleForm.@(Model.GetFirstLower(column.LeftJoinPropertyName)) = null;
+                     @:"
+                     @:style="width: 100%; height: 100%; object-fit: contain"
+                @:/>
+                @:<el-icon v-else><Plus /></el-icon>
+              @:</el-upload>
+              } else if (column.IsInputTextArea) {
+              // 文本域
+              @:<el-input v-model="state.ruleForm.@(column.LowerPropertyName)" type="textarea" placeholder="请输入@(column.ColumnComment)" clearable :disabled="state.disabled" class="w100" />
+              } else {
+              // 输入框
+              @:<el-input v-model="state.ruleForm.@(column.LowerPropertyName)" placeholder="请输入@(column.ColumnComment)" clearable :disabled="state.disabled" class="w100" />
+              }
+            @:</el-form-item>
+          @:</el-col>
+          }
+        </el-row>
+      </el-form>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @@click="() => state.showDialog = false" :disabled="state.loading">取 消</el-button>
+          <el-button v-if="!state.disabled" @@click="submit" type="primary" v-reclick="1500" :disabled="state.loading">确 定</el-button>
+        </span>
+      </template>
+    </el-dialog>
+  </div>
+</template>
+
+<!-- @(Model.BusName) -->
+<script lang="ts" name="@(Model.LowerClassName)" setup>
+import { ref, reactive, onMounted } from "vue";
+import { ElMessage } from "element-plus";
+import type { FormInstance } from "element-plus";
+@if (Model.AllFields.Any(u => u.IsConst)) {
+@:import {useUserInfo} from "/@@/stores/userInfo";
+}
+@if(Model.TableFields.Any(x => x.IsDatePicker)) {
+@:import { formatDate } from '/@@/utils/formatTime';
+}
+@if(Model.UploadFields.Count > 0) {
+@:import { Plus } from "@@element-plus/icons-vue";
+@:import { UploadRequestOptions } from "element-plus";
+}
+
+@if (Model.AllFields.Any(u => u.IsForeignKey)) {
+@:import PulldownSelecter from "/@@/components/selector/pulldownSelecter.vue";
+}
+
+@if(Model.IsApiService) {
+@:import { getAPI } from '/@@/utils/axios-utils';
+@:import { @(Model.ClassName)Api } from '/@@/api-services/@(Model.PagePath)/api';
+@:import { Detail@(Model.ClassName)Output } from '/@@/api-services/@(Model.PagePath)/models';
+} else {
+@:import { use@(Model.ClassName)Api } from '/@@/api/@(Model.PagePath)/@(Model.LowerClassName)';
+}
+
+//父级传递来的函数，用于回调
+const emit = defineEmits(["handleQuery"]);
+@if (Model.AllFields.Any(u => u.IsConst)) {
+@:const userInfo = useUserInfo();
+}
+@if(!Model.IsApiService) {
+@:const @(Model.LowerClassName)Api = use@(Model.ClassName)Api();
+}
+const ruleFormRef = ref<FormInstance>();
+const state = reactive({
+  title: '',
+  loading: false,
+  disabled: false,
+  showDialog: false,
+  ruleForm: {} as @(Model.IsApiService ? $"Detail{Model.ClassName}Output" : "any"),
+@if (Model.AllFields.Any(u => u.IsTree || u.IsForeignKey)) {
+  @:dropdownData: {} as any,
+}
+});
+
+// 页面加载时
+onMounted(async () => {
+  @foreach (var column in Model.AllFields.Where(u => u.IsTree).GroupBy(u => new { u.IsTree }).Select(u => u.First())) {
+  if (column.JoinConfig.UseTable) continue;
+  var methodName = column.JoinConfig.EntityName + (column.IsTree ? "Tree" : "Table");
+  @:// 查询@(column.JoinConfig.TableComment)数据
+  @:state.dropdownData.@(column.LowerPropertyName) = await handle@(methodName)({}).then(res => res.data.result ?? []);
+  }
+});
+
+// 打开弹窗
+const openDialog = async (row: any, title: string) => {
+  state.title = title;
+  state.showDialog = true;
+  ruleFormRef.value?.resetFields();
+  state.disabled = title?.endsWith('详情');
+  if (row?.id) {
+    const res = await @(Model.GetHttpApiMethodName(null, "detail"))(row.id);
+    const formData = res.data.result ?? {};
+    @foreach (var column in Model.AddUpdateFields.Where(u => u.IsSwitch)) { // 处理开关字段：将布尔值转换为字符串
+    @:if (formData.@(column.LowerPropertyName) !== null && formData.@(column.LowerPropertyName) !== undefined) {
+      @:formData.@(column.LowerPropertyName) = formData.@(column.LowerPropertyName) ? '1' : '0';
+    @:}
+    }
+    state.ruleForm = formData;
+  } else {
+    const defaultData = { orderNo: 100, status: 1 };
+    state.ruleForm = Object.assign(defaultData, row ?? {});
+  }
+  @foreach (var column in Model.AddUpdateFields.Where(u => (u.IsDict || u.IsEnum || u.IsConst || u.IsForeignKey) && u.NetType.Trim('?') == "string" && u.Multiple)) { // 处理多选字段值
+  @:state.ruleForm.@(column.LowerPropertyName) = state.ruleForm.@(column.LowerPropertyName) ? state.ruleForm.@(column.LowerPropertyName).split(",") : state.ruleForm.@(column.LowerPropertyName);
+  }
+};
+
+// 关闭弹窗
+const closeDialog = () => {
+  emit("handleQuery");
+  state.showDialog = false;
+};
+
+// 提交
+const submit = async () => {
+  ruleFormRef.value?.validate(async (isValid: boolean, fields?: any) => {
+    if (isValid) {
+      state.loading = true;
+      try {
+        let values = JSON.parse(JSON.stringify(state.ruleForm));
+        // 处理开关字段：将字符串转换为布尔值
+        @foreach (var column in Model.AddUpdateFields.Where(u => u.IsSwitch)) {
+        @:if (values.@(column.LowerPropertyName) !== null && values.@(column.LowerPropertyName) !== undefined) {
+          @:values.@(column.LowerPropertyName) = values.@(column.LowerPropertyName) === '1' || values.@(column.LowerPropertyName) === true || values.@(column.LowerPropertyName) === 1;
+        @:}
+        }
+        // 处理多选字段值
+        @foreach (var column in Model.AddUpdateFields.Where(u => (u.IsDict || u.IsEnum || u.IsConst || u.IsForeignKey) && u.NetType.Trim('?') == "string" && u.Multiple)) {
+        @:values.@(column.LowerPropertyName) = Array.isArray(values.@(column.LowerPropertyName)) ? values.@(column.LowerPropertyName)?.join(",") : values.@(column.LowerPropertyName);
+        }
+        if (state.ruleForm.id) {
+          await @(Model.GetHttpApiMethodName(null, "update"))(values);
+        } else {
+          await @(Model.GetHttpApiMethodName(null, "add"))(values);
+        }
+        closeDialog();
+      } finally {
+        state.loading = false;
+      }
+    } else {
+      ElMessage({
+        message: `表单有${Object.keys(fields).length}处验证失败，请修改后再提交`,
+        type: "error",
+      });
+    }
+  });
+};
+
+@foreach (var column in Model.ApiFields.GroupBy(u => new { u.IsTree, u.JoinConfig.EntityName }).Select(u => u.First())) {
+var methodName = column.JoinConfig.EntityName + (column.IsTree ? "Tree" : "Table");
+@:// 查询@(column.JoinConfig.TableComment)数据
+@:const handle@(methodName) = async (data: any) => {
+  @:return await @(Model.GetHttpApiMethodName(column, column.IsTree ? "fkTree" : "fkTable"))(data);
+@:}
+@:
+}
+@foreach (var column in Model.UploadFields) {
+@:// 上传@(column.ColumnComment)
+@:const upload@(column.PropertyName)Handle = async (options: UploadRequestOptions) => {
+  @:const res = await @(Model.GetHttpApiMethodName(column, "upload"))(options);
+  @:if (res.data.result) {
+    @:state.ruleForm.@(column.LowerPropertyName) = res.data.result.@(column.NetType.StartsWith("long") ? "id" : "url");
+    @:state.ruleForm.@(Model.GetFirstLower(column.LeftJoinPropertyName)) = res.data.result;
+  @:}
+@:}
+@:
+}
+//将属性或函数暴露给父组件
+defineExpose({ openDialog });
+</script>
+
+<style lang="scss" scoped>
+</style>

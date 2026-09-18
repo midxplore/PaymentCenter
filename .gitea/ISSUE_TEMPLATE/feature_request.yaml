@@ -1,0 +1,33 @@
+---
+name: 功能请求
+about: Suggest an idea for this project
+title: '[feature]:简单说明'
+body:
+  - type: textarea
+    id: feature
+    attributes:
+      label: 功能描述
+      description: 请详细描述您希望的功能
+    validations:
+      required: true
+
+  - type: dropdown
+    id: level
+    attributes:
+      label: 优先级
+      description: 请选择功能的优先级
+      options:
+        - 高
+        - 中
+        - 低
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: design
+    attributes:
+      label: 是否需要设计？
+      description: 是否需要设计团队参与？
+      options:
+        - label: 需要
+        - label: 不需要

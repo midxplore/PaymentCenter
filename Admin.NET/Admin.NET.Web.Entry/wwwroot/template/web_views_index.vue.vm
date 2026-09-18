@@ -1,0 +1,479 @@
+﻿<template>
+@{
+  // 查询表单渲染方法
+  void ReaderTableSearchForm(CustomTemplateEngine sender, string nameSuffix) {
+        @:<el-card shadow="hover" :body-style="{ padding: '5px', display: 'flex', width: '100%', height: '100%', alignItems: 'start' }">
+          @:<el-form :model="state@(nameSuffix).queryParams" ref="queryForm" :show-message="false" :inlineMessage="true" label-width="auto" style="flex: 1 1 0%">
+            @:<el-row :gutter="10">
+                if (sender.QueryFields.Any(u => u.QueryType == "like")) {
+                @:<el-col :xs="24" @(Model.IsHorizontal ? ":sm=\"12\" :md=\"12\" :lg=\"12\" :xl=\"12\"" : ":sm=\"12\" :md=\"8\" :lg=\"6\" :xl=\"6\"") v-if="!state@(nameSuffix).showAdvanceQueryUI">
+                  @:<el-form-item label="关键字">
+                    @:<el-input v-model="state@(nameSuffix).queryParams.keyword" clearable placeholder="请输入模糊查询关键字" style="width: 150px" class="w100" />
+                  @:</el-form-item>
+                @:</el-col>
+                }
+                foreach (var column in sender.QueryFields) {
+                @:<el-col class="mb5" :xs="24" @(Model.IsHorizontal ? ":sm=\"12\" :md=\"12\" :lg=\"12\" :xl=\"12\"" : ":sm=\"12\" :md=\"8\" :lg=\"6\" :xl=\"6\"") v-if="state@(nameSuffix).showAdvanceQueryUI">
+                  @:<el-form-item label="@(column.ColumnComment)" prop="@(column.LowerPropertyName)">
+                  if (column.IsInputTextArea) { // 文本框
+                    @:<el-input v-model="state@(nameSuffix).queryParams.@(column.LowerPropertyName)" type="textarea" placeholder="请输入@(column.ColumnComment)" @@keyup.enter.native="handleQuery(false)" class="w100" clearable />
+                  } else if (column.IsDatePicker) { // 时间
+                    if (column.QueryType == "~") {
+                    @:<el-date-picker type="daterange" v-model="state@(nameSuffix).queryParams.@(column.LowerPropertyName)Range"  value-format="YYYY-MM-DD HH:mm:ss" start-placeholder="开始日期" end-placeholder="结束日期" :default-time="[new Date('1 00:00:00'), new Date('1 23:59:59')]" class="w100" />
+                    } else {
+                    @:<el-date-picker placeholder="请选择@(column.ColumnComment)" value-format="YYYY/MM/DD"  v-model="state@(nameSuffix).tableQueryParams.@(column.LowerPropertyName)" class="w100" />
+                    }
+                  } else if (column.IsInputNumber) { // 数字
+                    @:<el-input-number v-model="state@(nameSuffix).queryParams.@(column.LowerPropertyName)" placeholder="请输入@(column.ColumnComment)" @@keyup.enter.native="handleQuery(false)" class="w100" clearable />
+                  } else if (column.IsSwitch) { // 开关
+                    @:<el-select v-model="state@(nameSuffix).queryParams.@(column.LowerPropertyName)" :placeholder="'请选择@(column.ColumnComment)'" class="w100" clearable>
+                      @:<el-option label="是" :value="1" />
+                      @:<el-option label="否" :value="0" />
+                    @:</el-select>
+                  } else if (column.IsConst) { // 常量
+                    @:<el-select v-model="state@(nameSuffix).queryParams.@(column.LowerPropertyName)" :placeholder="'请选择@(column.ColumnComment)'" class="w100" clearable>
+                      @:<el-option v-for="item in userInfo.getConstDataByTypeCode('@(column.DictConfig.Code)')" :key="item.code" :label="item.name" :value="item.code" />
+                    @:</el-select>
+                  } else if (column.IsDict || column.IsEnum) { // 字典枚举
+                    @:<g-sys-dict v-model="state@(nameSuffix).queryParams.@(column.LowerPropertyName)" code="@(column.DictConfig.Code)" render-as="select" @@keyup.enter.native="handleQuery(false)" class="w100" clearable />
+                  } else if (column.IsTree) { // 树组件
+                    @:<el-cascader
+                        @::options="state@(nameSuffix).dropdownData.@(column.LowerPropertyName) ?? []"
+                        @::props="{ value: '@(Model.GetFirstLower(column.JoinConfig.LinkPropertyName))', label: '@(Model.GetFirstLower(column.JoinConfig.DisplayPropertyNames.Split(",").First()))', checkStrictly: true, emitPath: false }"
+                        @:v-model="state@(nameSuffix).queryParams.@(column.LowerPropertyName)"
+                        @:placeholder="请选择@(column.ColumnComment)"
+                        @:clearable
+                        @:filterable
+                        @:class="w100">
+                      @:<template #default="{ node, data }">
+                        @:<span>@(string.Join("-", column.JoinConfig.DisplayPropertyNames.Split(",").Select(x => $"{{{{ data.{Model.GetFirstLower(x)} }}}}")))</span>
+                        @:<span v-if="!node.isLeaf"> ({{ data.children.length }}) </span>
+                      @:</template>
+                    @:</el-cascader>
+                  } else if (column.IsForeignKey) { // 外键组件
+                    var firstDisplayName = Model.GetFirstLower(column.JoinConfig.DisplayPropertyNames.Split(",").First());
+                    var linkPropertyName = Model.GetFirstLower(column.JoinConfig.LinkPropertyName);
+                    var leftJoinPropertyName = Model.GetFirstLower(column.LeftJoinPropertyName);
+                    @:<pulldown-selecter
+                      @:v-model="state@(nameSuffix).queryParams.@(column.LowerPropertyName)"
+                      @::fetch-options="handle@(column.JoinConfig.EntityName)Table"
+                      @::query-params="{ pageSize: 10, all: true  }"
+                      @:value-prop="@(linkPropertyName)"
+                      @:label-prop="@(firstDisplayName)"
+                      @:placeholder="选择@(column.ColumnComment)"
+                      @:filterable
+                      @:clearable
+                      @:class="w100">
+                      @:<template #columns>
+                        @:<el-table-column prop="id" label="主键ID" width="150" />
+                        @:<el-table-column prop="@(firstDisplayName)" label="@(firstDisplayName)" width="150" />
+                      @:</template>
+                    @:</pulldown-selecter>
+                    @:<!--
+                    @:<el-select v-model="state@(nameSuffix).ruleForm.@(column.LowerPropertyName)" :placeholder="'请选择@(column.ColumnComment)'" clearable@(column.Multiple ? " multiple" : "") class="w100">
+                      @:<el-option v-for="item in state@(nameSuffix).dropdownData.@(column.LowerPropertyName) ?? []" :key="item.@(linkPropertyName)" :label="item.@(firstDisplayName)" :value="item.@(linkPropertyName)" />
+                    @:</el-select>
+                    @:-->
+                  } else { // 输入框
+                    @:<el-input v-model="state@(nameSuffix).queryParams.@(column.LowerPropertyName)" placeholder="请输入@(column.ColumnComment)" @@keyup.enter.native="handleQuery(false)" class="w100" clearable />
+                  }
+                  @:</el-form-item>
+                @:</el-col>
+                }
+              @:</el-row>
+            @:</el-form>
+            @:<el-divider style="height: calc(100% - 5px); margin: 0 10px" direction="vertical" />
+            @:<el-row>
+              @:<el-col>
+                @:<el-button-group>
+                  @:<el-button type="primary" icon="ele-Search" @@click="handleQuery@(nameSuffix)(false)"> @(sender.QueryFields.Any() ? "查询" : "刷新") </el-button>
+                  if (sender.QueryFields.Any()) {
+                  @:<el-button icon="ele-ZoomIn" @@click="() => state@(nameSuffix).showAdvanceQueryUI = true" v-if="!state@(nameSuffix).showAdvanceQueryUI" style="margin-left:5px;"> 高级查询 </el-button>
+                  @:<el-button icon="ele-ZoomOut" @@click="() => state@(nameSuffix).showAdvanceQueryUI = false" v-if="state@(nameSuffix).showAdvanceQueryUI" style="margin-left:5px;"> 隐藏 </el-button>
+                  @:<el-button icon="ele-Refresh" @@click="resetQuery@(nameSuffix)"> 重置 </el-button>
+                  }
+                @:</el-button-group>
+              @:</el-col>
+            @:</el-row>
+          @:</el-card>
+  }
+
+  // 表格渲染方法
+  void ReaderTableGrid(CustomTemplateEngine sender, string nameSuffix) {
+        @:<vxe-card class="full-height" style="margin-top: 5px; height: calc(100vh - 160px)">
+          @:<vxe-grid ref="xGrid@(nameSuffix)" class="xGrid-style" v-bind="options@(nameSuffix)" v-on="gridEvents@(nameSuffix)"@(sender.TableFields.Any(u => u.IsStatistical) ? " :footer-data=\"[{ seq: '合计' } ]\"" : "")>
+            @:<template #toolbar_buttons>
+              @:<el-button type="primary" icon="ele-Plus" @@click="handleAdd@(nameSuffix)" v-auth="'@(sender.LowerClassName)/add'"> 新增 </el-button>
+            @:</template>
+            @:<template #import_button>
+              @:<div style="position: absolute; right: 5px; top: 15px">
+                @:<el-button type="primary" @@click="handleDownload@(nameSuffix)"> 下载模板 </el-button>
+              @:</div>
+            @:</template>
+            @:<template #toolbar_tools></template>
+            @:<template #empty><el-empty :image-size="200" /></template>
+            @:<template #row_record="{ row }"><ModifyRecord :data="row" /></template>
+            @:<template #$row_sysDict="{ row, column }">
+              @:<g-sys-dict v-model="row[column.field]" :code="column.params?.code" :multiple="column.params?.multiple" :isConst="column.params?.isConst" />
+            @:</template>
+            @:<template #$row_switch="{ row, column }">
+              @:<el-tag v-if="row[column.field]" type="success">是</el-tag>
+              @:<el-tag v-if="!row[column.field]" type="warring">否</el-tag>
+            @:</template>
+            @:<template #$row_status="{ row, column }">
+              @:<el-switch v-model="row[column.field]" :active-value="1" :inactive-value="2" @@click="handleStatusChange@(nameSuffix)(row)" />
+            @:</template>
+            @:<template #$row_copy="{ row, column }">
+              @:{{ row[column.field] }}
+              @:<el-button v-if="row[column.field]" class="ml5" icon="ele-CopyDocument" text type="primary" @@click="commonFun.copyText(row[column.field]?.toString())" />
+            @:</template>
+            @:<template #$row_upload="{ row, column }">
+              @:<div v-if="column.params?.isImage && (row[column.params?.attachmentName]?.url || row[column.field])" class="image-container">
+                @:<el-image
+                  @::src="row[column.params?.attachmentName]?.url || row[column.field]"
+                  @:fit="contain"
+                  @:style="width: 60px; height: 30px; max-height: 30px; object-fit: contain; margin: 3px; cursor: pointer"
+                  @::preview-src-list="[row[column.params?.attachmentName]?.url || row[column.field]]"
+                  @:loading="lazy"
+                @:/>
+              @:</div>
+              @:<el-link v-if="column.params?.useDownload && row[column.params?.attachmentName]?.url" type="primary" :href="row[column.params?.attachmentName]?.url" target="_blank"> {{ column.params?.DownloadText }} </el-link>
+            @:</template>
+            @:<template #$row_statistical="scope">
+              <span class="table-footer">{{commonFun.getStatistical(scope)}}</span>
+            @:</template>
+            @:<template #row_buttons="{ row }">
+              @:<el-button icon="ele-Delete" size="small" text type="danger" @@click="handleDelete@(nameSuffix)(row)" v-auth="'@(sender.LowerClassName)/delete'">删除</el-button>
+              @:<el-button icon="ele-Edit" size="small" text type="primary" @@click="handleEdit@(nameSuffix)(row)" v-auth="'@(sender.LowerClassName)/update'">编辑</el-button>
+              @:<el-button icon="ele-Warning" size="small" text type="primary" @@click="handleDetail@(nameSuffix)(row)" v-auth="'@(sender.LowerClassName)/detail'">详情</el-button>
+            @:</template>
+          @:</vxe-grid>
+        @:</vxe-card>
+  }
+}
+  <div class="sys-@(Model.LowerClassName)-container">
+    <splitpanes@(Model.TreeConfig == null && Model.IsHorizontal ? " horizontal" : "")>
+      @if (Model.TreeConfig != null) {
+      @:<pane size="15" style="display: flex">
+        @:<@(Model.TreeConfig.LowerEntityName)Tree ref="@(Model.TreeConfig.LowerEntityName)TreeRef" @@node-click="handleNodeChange" />
+      @:</pane>
+      }
+      <pane>
+        @{ ReaderTableSearchForm(Model, ""); }
+        @{ ReaderTableGrid(Model, ""); }
+      </pane>
+      @if (Model.SlaveTable != null) {
+      @:<pane>
+        @{ ReaderTableSearchForm(Model.SlaveTable, "Slave"); }
+        @{ ReaderTableGrid(Model.SlaveTable, "Slave"); }
+      @:</pane>
+      }
+    </splitpanes>
+		
+    <Edit@(Model.ClassName)Dialog ref="edit@(Model.ClassName)DialogRef" @@handleQuery="handleQuery" />
+    @if (Model.SlaveTable != null) {
+    @:<Edit@(Model.SlaveTable.ClassName)Dialog ref="edit@(Model.SlaveTable.ClassName)DialogRef" @@handleQuery="handleQuerySlave" />
+    }
+  </div>
+</template>
+
+<!-- @(Model.BusName) -->
+<script lang="ts" setup name="@(Model.LowerClassName)">
+import { onMounted, reactive, ref } from 'vue';
+import { ElMessageBox, ElMessage } from 'element-plus';
+import { VxeGridInstance, VxeGridListeners, VxeGridPropTypes } from 'vxe-table';
+import { useVxeTable } from '/@@/hooks/useVxeTableOptionsHook';
+import commonFunction from "/@@/utils/commonFunction";
+import {downloadStreamFile} from "/@@/utils/download";
+@if (Model.AllFields.Concat(Model.SlaveTable?.AllFields ?? Model.AllFields.Where(_ => false)).Any(u => u.IsConst)) {
+@:import {useUserInfo} from "/@@/stores/userInfo";
+}
+import { Local } from '/@@/utils/storage';
+
+import ModifyRecord from '/@@/components/table/modifyRecord.vue';
+@if (Model.AllFields.Concat(Model.SlaveTable?.AllFields ?? Model.AllFields.Where(_ => false)).Any(u => u.IsForeignKey)) {
+@:import PulldownSelecter from "/@@/components/selector/pulldownSelecter.vue";
+}
+import Edit@(Model.ClassName)Dialog from './component/edit@(Model.ClassName)Dialog.vue';
+@if (Model.SlaveTable != null) {
+@:import Edit@(Model.SlaveTable.ClassName)Dialog from './component/edit@(Model.SlaveTable.ClassName)Dialog.vue';
+}
+@if (Model.TreeConfig != null) {
+@:import @(Model.TreeConfig.EntityName)Tree from "./component/@(Model.TreeConfig.LowerEntityName)Tree.vue";
+}
+
+@if (Model.IsApiService) {
+@:import { getAPI } from '/@@/utils/axios-utils';
+var useApiList = new List<string>() { $"{Model.ClassName}Api" };
+var useApiModelList = new List<string>() { $"Page{Model.ClassName}Input", $"Page{Model.ClassName}Output", $"Update{Model.ClassName}Input" };
+if (Model.SlaveTable != null) { // 增加从表Api依赖导入
+  useApiList.Add($"{Model.SlaveTable.ClassName}Api");
+  useApiModelList.AddRange(new List<string>() { $"Page{Model.SlaveTable.ClassName}Input", $"Page{Model.SlaveTable.ClassName}Output", $"Update{Model.SlaveTable.ClassName}Input" });
+}
+@:import { @(string.Join(", ", useApiList)) } from '/@@/api-services/@(Model.PagePath)/api';
+@:import { @(string.Join(", ", useApiModelList)) } from '/@@/api-services/@(Model.PagePath)/models';
+} else {
+  var useApiList = new List<string>() { $"use{Model.ClassName}Api" };
+  if (Model.SlaveTable != null) { // 增加从表Api依赖导入
+    useApiList.Add($"use{Model.SlaveTable.ClassName}Api");
+  }
+@:import { @(string.Join(", ", useApiList)) } from '/@@/api/@(Model.PagePath)/@(Model.LowerClassName)';
+}
+
+@if (Model.AllFields.Concat(Model.SlaveTable?.AllFields ?? Model.AllFields.Where(_ => false)).Any(u => u.IsConst)) {
+@:const userInfo = useUserInfo();
+}
+const commonFun = commonFunction();
+@if(!Model.IsApiService) {
+@:const @(Model.LowerClassName)Api = use@(Model.ClassName)Api();
+  if (Model.SlaveTable != null) {
+@:const @(Model.SlaveTable.LowerClassName)Api = use@(Model.SlaveTable.ClassName)Api();
+  }
+}
+@if (Model.TreeConfig != null) {
+@:const @(Model.TreeConfig.LowerEntityName)TreeRef = ref<InstanceType<typeof @(Model.TreeConfig.LowerEntityName)Tree>>();
+}
+
+// 页面初始化
+onMounted(async () => {
+  initModule();
+  @if (Model.SlaveTable != null) {
+  @:initModuleSlave();
+  }
+})
+
+@{
+  RenderMethod(Model, "");
+  if (Model.SlaveTable != null) {
+    @:
+    RenderMethod(Model.SlaveTable, "Slave");
+  }
+void RenderMethod(CustomTemplateEngine sender, string nameSuffix) {
+@:// @(sender.BusName)状态参数
+@:const state@(nameSuffix) = reactive({
+  if (!string.IsNullOrWhiteSpace(sender.LastLinkPropertyName)) {
+  @:@(Model.GetFirstLower(sender.LastLinkPropertyName)): undefined as any,
+  }
+  @:resetQueryParams: {} as Page@(sender.ClassName)Input,
+  @:queryParams: {} as Page@(sender.ClassName)Input,
+  if (sender.AllFields.Any(u => u.IsTree)) {
+  @:dropdownData: {} as any,
+  }
+  @:showAdvanceQueryUI: false,
+  @:localPageParam: {
+    @:pageSize: 20 as number,
+    @:defaultSort: { field: '@(sender.AllFields.Any(u => u.PropertyName == "OrderNo") ? "orderNo" : "id")', order: 'asc', descStr: 'desc' },
+  @:},
+  @:visible: false
+@:})
+
+@:
+@:const xGrid@(nameSuffix) = ref<VxeGridInstance>();
+@:const edit@(sender.ClassName)DialogRef = ref<InstanceType<typeof Edit@(sender.ClassName)Dialog>>();
+@:const localPageParamKey@(nameSuffix) = 'localPageParam:@(sender.LowerClassName)'; // @(sender.BusName)本地存储参数
+@:const options@(nameSuffix) = useVxeTable<Page@(sender.ClassName)Output>( // @(sender.BusName)表格参数配置
+  @:{
+    @:id: '@(sender.LowerClassName)',
+    @:name: '@(sender.BusName)',
+    @:columns: [
+      @:// { type: 'checkbox', width: 40, fixed: 'left' },
+      @:{ field: 'seq', type: 'seq', title: '序号', width: 60, fixed: 'left' },
+      foreach(var column in sender.TableFields) {
+      if (column.IsUpload) {
+      @:{ field: '@(column.LowerPropertyName)', title: '@(column.ColumnComment)', minWidth: 150,@(column.IsSortable ? " sortable: true," : "") showOverflow: 'tooltip', params: { attachmentName: '@(Model.GetFirstLower(column.LeftJoinPropertyName))', isImage: true, useDownload: false, downloadText: '查看文件' }, slots: { default: '$row_upload' } },
+      } else {
+      @:{ field: '@(column.LowerPropertyName)', title: '@(column.ColumnComment)', minWidth: 150,@(column.IsSortable ? " sortable: true," : "") showOverflow: 'tooltip'@(column.GetVxeColumnExtraConfig) },
+      }
+      }
+      @:{ field: 'record', title: '修改记录', width: 100, showOverflow: 'tooltip', slots: { default: 'row_record' } },
+      @:{ field: 'buttons', title: '操作', fixed: 'right', width: 200, showOverflow: true, slots: { default: 'row_buttons' } },
+    @:],
+  @:}, {// vxeGrid配置参数(此处可覆写任何参数)，参考vxe-table官方文档
+    @if (sender.TableFields.Any(u => u.IsStatistical)) {
+    @:// 显示表格统计行
+    @:showFooter: true,
+    }
+    @:// 代理配置
+    @:proxyConfig: { autoLoad: true, ajax: { query: ({ page, sort }) => {
+      @:// 如果sort参数为空或无效，使用默认排序规则
+      @:const defaultSort = Local.get(localPageParamKey@(nameSuffix))?.defaultSort || state@(nameSuffix).localPageParam.defaultSort;
+      @:const effectiveSort = sort?.field && sort?.order ? sort : { field: defaultSort.field, order: defaultSort.order };
+      @:return handleQueryApi@(nameSuffix)(page, effectiveSort);
+    @:} } },
+    @:// 排序配置
+    @:sortConfig: { defaultSort: Local.get(localPageParamKey@(nameSuffix))?.defaultSort || state@(nameSuffix).localPageParam.defaultSort },
+    @:// 分页配置
+    @:pagerConfig: { pageSize: Local.get(localPageParamKey@(nameSuffix))?.pageSize || state@(nameSuffix).localPageParam.pageSize },
+    @:// 导入配置
+    @:importConfig: @(sender.ImportFields.Any() ? ("{ remote: true, importMethod: (options: any) => handleImport" + nameSuffix + "(options), slots: { top: 'import_button' }}") : "{} as any"),
+    @:// 工具栏配置
+    @:toolbarConfig: { import: @(sender.ImportFields.Any() ? "true" : "false"), export: true },
+  @:}
+@:)
+
+@:
+@:// @(sender.BusName)模块初始化
+@:const initModule@(nameSuffix) = async () => {
+  @:state@(nameSuffix).resetQueryParams = Object.assign({}, state@(nameSuffix).queryParams);
+  @:state@(nameSuffix).localPageParam = Local.get(localPageParamKey) || state@(nameSuffix).localPageParam;
+  @foreach (var column in Model.AllFields.Where(u => u.IsTree).GroupBy(u => new { u.IsTree }).Select(u => u.First())) {
+    if (column.JoinConfig.UseTable) continue;
+    var methodName = column.JoinConfig.EntityName + (column.IsTree ? "Tree" : "Table");
+  @:// 查询@(column.JoinConfig.TableComment)数据
+  @:state@(nameSuffix).dropdownData.@(column.LowerPropertyName) = await handle@(methodName)({}).then(res => res.data.result ?? []);
+  }
+@:}
+
+@:
+@:// @(sender.BusName)表格查询api
+@:const handleQueryApi@(nameSuffix) = (page: VxeGridPropTypes.ProxyAjaxQueryPageParams, sort: VxeGridPropTypes.ProxyAjaxQuerySortCheckedParams) => {
+  @:const params = Object.assign(state@(nameSuffix).queryParams, { page: page.currentPage, pageSize: page.pageSize, field: sort.field, order: sort.order, descStr: 'desc' }) as Page@(sender.ClassName)Input;
+  @:return @(Model.GetHttpApiMethodName(null, "page", sender))(params);
+@:}
+
+@:
+@:// @(sender.BusName)表格查询操作
+@:const handleQuery@(nameSuffix) = async (reset = false) => {
+  @:options@(nameSuffix).loading = true;
+  @:reset ? await xGrid@(nameSuffix).value?.commitProxy('reload') : await xGrid@(nameSuffix).value?.commitProxy('query');
+  @:options@(nameSuffix).loading = false;
+@:}
+
+@:
+@:// @(sender.BusName)重置操作
+@:const resetQuery@(nameSuffix) = async () => {
+  @:state@(nameSuffix).queryParams = Object.assign({}, state@(nameSuffix).resetQueryParams);
+  @:await xGrid@(nameSuffix).value?.commitProxy('reload');
+@:}
+
+@:
+@:// 打开@(sender.BusName)新增页面
+@:const handleAdd@(nameSuffix) = () => {
+  @:edit@(sender.ClassName)DialogRef.value?.openDialog(undefined, '添加@(sender.BusName)');
+@:}
+
+@:
+@:// @(sender.BusName)删除操作
+@:const handleDelete@(nameSuffix) = (row: any) => {
+  @:ElMessageBox.confirm(`确定删除记录?`, '提示', {
+    @:confirmButtonText: '确定',
+    @:cancelButtonText: '取消',
+    @:type: 'warning',
+  @:}).then(async () => {
+    @:await @(Model.GetHttpApiMethodName(null, "delete", sender))({ id: row.id });
+    @:await handleQuery@(nameSuffix)();
+    @:ElMessage.success('删除成功');
+  @:}).catch(() => {});
+@:}
+
+@:
+@:// 打开@(sender.BusName)编辑页面
+@:const handleEdit@(nameSuffix) = async (row: any) => {
+  @:edit@(sender.ClassName)DialogRef.value?.openDialog(row, '编辑@(sender.BusName)');
+@:}
+
+@:
+@:// 打开@(sender.BusName)详情页面
+@:const handleDetail@(nameSuffix) = async (row: any) => {
+  @:edit@(sender.ClassName)DialogRef.value?.openDialog(row, '@(sender.BusName)详情');
+@:}
+
+if (sender.AllFields.Any(u => u.IsStatus)) {
+@:
+@:// @(sender.BusName)设置状态
+@:const handleStatusChange@(nameSuffix) = (row: any) => {
+  @:ElMessageBox.confirm(`确定${row.status === 2 ? '停用' : '启用'}该记录?`, '提示', {
+    @:confirmButtonText: '确定',
+    @:cancelButtonText: '取消',
+    @:type: 'warning',
+    @:closeOnClickModal: false, // 禁止点击遮罩层关闭
+    @:closeOnPressEscape: false, // 禁止按 Esc 键关闭
+    @:}).then(async () => {
+      @:@(Model.GetHttpApiMethodName(null, "setStatus", sender))({ id: row.id, status: row.status });
+      @:ElMessage.success('操作成功');
+    @:}).catch(() => {
+      @:// 取消操作，还原状态
+      @:row.status = row.status === 1 ? 2 : 1;
+    @:});
+@:}
+}
+
+if (sender.ImportFields.Any()) {
+@:
+@:// 下载@(sender.BusName)模板
+@:const handleDownload@(nameSuffix) = async () => {
+  @:await @(Model.GetHttpApiMethodName(null, "downloadTemplate", sender))({ responseType: 'arraybuffer' }).then(downloadStreamFile);
+@:}
+
+@:
+@:// @(sender.BusName)数据导入
+@:const handleImport@(nameSuffix) = async (options: any) => {
+  @:const res = @(Model.GetHttpApiMethodName(null, "importData", sender))(options.file, { responseType: 'arraybuffer' });
+  @:res.then(downloadStreamFile);
+  @:return res;
+@:}
+}
+
+@:
+@:// @(sender.BusName)表格事件
+@:const gridEvents@(nameSuffix): VxeGridListeners<Page@(sender.ClassName)Output> = {
+    @:// 只对 pager-config 配置时有效，分页发生改变时会触发该事件
+    @:async pageChange({ pageSize }) {
+      @:state@(nameSuffix).localPageParam.pageSize = pageSize;
+      @:Local.set(localPageParamKey@(nameSuffix), state@(nameSuffix).localPageParam);
+    @:},
+    @:// 当排序条件发生变化时会触发该事件
+    @:async sortChange({ field, order }) {
+      @:const config = state@(nameSuffix).localPageParam.defaultSort;
+      @:state@(nameSuffix).localPageParam.defaultSort = { field: field ?? config?.field, order: order ?? config?.order, descStr: 'desc' };
+      @:Local.set(localPageParamKey@(nameSuffix), state@(nameSuffix).localPageParam);
+    @:},
+    if (sender.SlaveTable != null && !string.IsNullOrWhiteSpace(sender.NextLinkPropertyName)) {
+    @:// 单元格点击事件
+    @:async cellClick({ row }) {
+      @:if (stateSlave.queryParams.@(Model.GetFirstLower(sender.SlaveTable.LastLinkPropertyName)) == row.@(Model.GetFirstLower(sender.NextLinkPropertyName))) return;
+      @:stateSlave.queryParams.@(Model.GetFirstLower(sender.SlaveTable.LastLinkPropertyName)) = row.@(Model.GetFirstLower(sender.NextLinkPropertyName)) as any;
+      @:handleQuerySlave();
+    @:},
+    }
+@:}
+}
+}
+
+@if(Model.TreeConfig != null) {
+@:// 树组件点击
+@:const handleNodeChange = async (node: any) => {
+  @:state.queryParams.@(Model.GetFirstLower(Model.LastLinkPropertyName)) = node.@(Model.GetFirstLower(Model.TreeConfig.LinkPropertyName));
+  @:@(Model.TreeConfig.LowerEntityName)TreeRef?.value?.setCurrentKey();
+  @:await handleQuery();
+@:};
+}
+
+@{
+  var methodNameList = new List<string>();
+  foreach (var column in Model.ApiFields.Concat(Model.SlaveTable?.ApiFields ?? Model.ApiFields.Where(_ => false))) {
+    var methodName = column.JoinConfig.EntityName + (column.IsTree ? "Tree" : "Table");
+    if (methodNameList.Contains(methodName)) continue;
+    methodNameList.Add(methodName);
+@:// 查询@(column.JoinConfig.TableComment)@(column.IsTree ? "树结构" : "")数据
+@:const handle@(methodName) = async (data: any) => {
+  @:return await @(Model.GetHttpApiMethodName(column, column.IsTree ? "fkTree" : "fkTable"))(data);
+@:}
+@:
+  }
+}
+</script>
+
+<style scoped>
+:deep(.el-card) {
+  overflow: visible !important;
+}
+.full-height {
+  display: flex;
+  flex-direction: column;
+  height: calc(100% - 40px);
+}
+.table-footer {
+  color: red;
+}
+</style>

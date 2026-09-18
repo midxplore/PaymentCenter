@@ -1,0 +1,10 @@
+{
+  "schema": "https://gitee.com/dotnetchina/Furion/raw/v4/schemas/v4/furion-schema.json",
+
+  // 消息模版
+  "MessageTemplates": {
+    "ST00001": "### <font color=\"info\">定时任务执行成功</font>\n任务详情：{TaskDesc}\n开始时间：{BeginTime}\n结束时间：{EndTime}\n执行耗时：{Duration}秒",
+    "ST00002": "### <font color=\"warning\">定时任务执行失败</font>\n任务详情：{TaskDesc}\n开始时间：{BeginTime}\n结束时间：{EndTime}\n执行耗时：{Duration}秒\n异常信息：{Exception}",
+    "ER00001": "### <font color=\"warning\">系统异常</font>\n异常来源：{source}\n异常类型：{name}\n异常时间：{nowDateTime}\n异常位置：{targetSite}\n异常消息：{message}\n异常堆栈：{stackTrace}"
+  }
+}

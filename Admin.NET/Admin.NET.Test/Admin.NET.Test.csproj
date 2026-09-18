@@ -1,0 +1,67 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<NoWarn>1701;1702;1591;8632</NoWarn>
+		<DocumentationFile></DocumentationFile>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<PreserveCompilationContext>true</PreserveCompilationContext>
+		<Nullable>disable</Nullable>
+		<GenerateDocumentationFile>True</GenerateDocumentationFile>
+		<Copyright>Admin.NET</Copyright>
+		<Description>Admin.NET 通用权限开发平台</Description>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
+		<!-- 必须用 Furion.Pure.Xunit，不能用 Furion.Xunit。
+		     本解决方案（Admin.NET.Core / Admin.NET.Web.Core）编译期绑定的是 Furion.Pure 程序集，
+		     而 Furion.Xunit 依赖的是另一个同版本、同公钥、但程序集标识不同的 Furion 程序集。
+		     两者并存会导致 typeof(AppStartup)（来自 Furion.dll）与
+		     Admin.NET.Web.Core.Startup.BaseType（Furion.Pure.AppStartup）不是同一个类型，
+		     于是 Furion 宿主扫描 AppStartup 子类结果为 0 → Startup.ConfigureServices 永不执行
+		     → DI 里没有 SqlSugar 等任何应用服务（但 Furion 自己注册的 IConfigurableOptions 还在，
+		     所以表面看起来"只跑了一半"）。
+		     Furion.Pure.Xunit 依赖 Furion.Pure，与应用同一套静态 App/Serve，问题消失。 -->
+		<PackageReference Include="Furion.Pure.Xunit" Version="4.9.7.221" />
+		<PackageReference Include="xunit.assert" Version="2.9.3" />
+		<!-- xUnit 测试适配器：缺了它 VSTest 会发现不到任何用例（报「没有可用测试」）。
+		     Furion.Xunit 只带 xunit.extensibility.execution（提供 Fact/Theory 特性），
+		     不包含发现器与执行器，故必须显式引用。 -->
+		<PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\Admin.NET.Web.Core\Admin.NET.Web.Core.csproj" />
+	</ItemGroup>
+
+	<!-- 测试宿主（TestProgram 的 Serve.RunNative()）与 Web.Entry 走同一套 Furion 配置管线。
+	     这些文件属于 Web.Entry，不会流向只引用 Web.Core 的本工程，必须显式链接；
+	     否则 Furion 读不到 ConfigurationScanDirectories → DbConnection 缺失 →
+	     AddSqlSugar 抛错被 ApplicationComponent 吞掉 → DI 中没有任何 SqlSugar 服务。 -->
+	<ItemGroup>
+		<Content Include="..\Admin.NET.Web.Entry\appsettings.json" Link="appsettings.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="..\Admin.NET.Web.Entry\appsettings.Development.json" Link="appsettings.Development.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<!-- 机器本地数据库覆盖（见 ConfigurationLocal/LocalOverride.json）。
+		     缺省不存在时，测试会落到 Configuration/Database.Development.json 指定的库。 -->
+		<Content Include="..\Admin.NET.Web.Entry\ConfigurationLocal\**\*.json"
+		         Link="ConfigurationLocal\%(RecursiveDir)%(Filename)%(Extension)">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+	</ItemGroup>
+
+	<!-- ★ 同 Web.Entry：目录**必须存在**，否则 Furion 的 AddJsonFiles 会对
+	     ConfigurationScanDirectories 里的 ConfigurationLocal 调 Directory.GetFiles 抛
+	     DirectoryNotFoundException（主机构建阶段，早于日志系统）。
+	     上面那条 glob 在「仓库里没有 LocalOverride.json」时匹配不到任何文件，
+	     MSBuild 也就不产出目录 → 测试宿主直接崩，表现为「一个用例都没跑起来」。
+	     MakeDir 保证目录存在；没有 json 时安静回落共享配置。 -->
+	<Target Name="EnsureConfigurationLocalInTestOutput" AfterTargets="Build">
+		<MakeDir Directories="$(OutDir)ConfigurationLocal" />
+	</Target>
+
+</Project>

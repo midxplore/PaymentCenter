@@ -1,0 +1,265 @@
+﻿// Admin.NET 项目的版权、商标、专利和其他相关权利均受相应法律法规的保护。使用本项目应遵守相关法律法规和许可证的要求。
+//
+// 本项目主要遵循 MIT 许可证和 Apache 许可证（版本 2.0）进行分发和使用。许可证位于源代码树根目录中的 LICENSE-MIT 和 LICENSE-APACHE 文件。
+//
+// 不得利用本项目从事危害国家安全、扰乱社会秩序、侵犯他人合法权益等法律法规禁止的活动！任何基于本项目二次开发而产生的一切法律纠纷和责任，我们不承担任何责任！
+
+////////////////////////////////////////////////////////////////////
+// 作者：@(Model.AuthorName ?? "Admin.NET")
+// 时间：@(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"))
+// 邮箱：@(Model.Email ?? "Admin.NET@qq.com")
+////////////////////////////////////////////////////////////////////
+
+using Magicodes.ExporterAndImporter.Core;
+using Magicodes.ExporterAndImporter.Excel;
+
+namespace @Model.NameSpace;
+
+/// <summary>
+/// @(Model.BusName)基础输入参数
+/// </summary>
+public class @(Model.ClassName)BaseInput
+{
+@{ var i = 0; }
+@foreach (var column in Model.AllFields){
+if (column.IsPrimarykey) continue;
+if (!@column.IsCommon) {
+    if (i++ != 0) {
+    @:
+    }
+    @:/// <summary>
+    @:/// @column.ColumnComment
+    @:/// </summary>
+
+    if (column.IsDict) {
+    @:[Dict("@(column.DictConfig?.Code)")]
+    }
+
+    if (column.IsEnum) {
+    @:[Dict(nameof(@column.DictConfig?.Code))]
+    }
+
+    @:public virtual @column.NullableNetType @column.PropertyName { get; set; }
+}
+}
+}
+
+/// <summary>
+/// @(@Model.BusName)分页查询输入参数
+/// </summary>
+public class Page@(@Model.ClassName)Input : BasePageInput
+{
+@{ i = 0; }
+@foreach (var column in Model.QueryFields) {
+    if (i++ != 0) {
+    @:
+    }
+    @:/// <summary>
+    @:/// @column.ColumnComment
+    @:/// </summary>
+
+    if (column.IsConst) {
+    @:[Const(nameof(@column.DictConfig?.Code))]
+    }
+
+    if (column.IsDict) {
+    @:[Dict("@(column.DictConfig?.Code)")]
+    }
+
+    if (column.IsEnum) {
+    @:[Dict(nameof(@column.DictConfig?.Code))]
+    }
+
+    @:public @column.NullableNetType @column.PropertyName { get; set; }
+
+    if (@column.NetType?.TrimEnd('?') == "DateTime" && @column.QueryType == "~") {
+    @:
+    @:/// <summary>
+    @:/// @(column.ColumnComment)范围
+    @:/// </summary>
+    @:public DateTime?[] @(column.PropertyName)Range { get; set; }
+}
+}
+}
+
+/// <summary>
+/// @(Model.BusName)增加输入参数
+/// </summary>
+public class Add@(Model.ClassName)Input : @(Model.ClassName)BaseInput
+{
+@{ i = 0; }
+@foreach (var column in Model.AddUpdateFields.Where(u => u.IsRequired)) {
+    if (i++ != 0) {
+    @:
+    }
+    @:/// <summary>
+    @:/// @column.ColumnComment
+    @:/// </summary>
+
+    if (@column.IsRequired) {
+    @:[Required(ErrorMessage = "@(column.ColumnComment)不能为空")]
+    } else if (column.FromValid != null && (int)column.FromValid != 100) {
+    @:@(column.GetFromValidAttribute())
+    }
+
+    if (column.IsConst) {
+    @:[Const(nameof(@column.DictConfig?.Code))]
+    }
+
+    if (column.IsDict) {
+    @:[Dict("@(column.DictConfig?.Code)"@(column.IsRequired ? "" : ""))]
+    } else if (column.IsEnum) {
+    @:[Dict(nameof(@column.DictConfig?.Code)@(column.IsRequired ? "" : ""))]
+    }
+
+    @:public override @column.NullableNetType @column.PropertyName { get; set; }
+}
+}
+
+/// <summary>
+/// @(Model.BusName)主键输入参数
+/// </summary>
+public class Primarykey@(Model.ClassName)Input
+{
+@foreach (var column in Model.PrimaryFields){
+    @:/// <summary>
+    @:/// @column.ColumnComment
+    @:/// </summary>
+    @:[Required(ErrorMessage = "@(column.ColumnComment)不能为空")]
+    if (@column.NetType == "Guid" && @column.PropertyName == "Id") {
+    @:public @column.NullableNetType @column.PropertyName { get; set; }
+    } else if (@column.IsPrimarykey) {
+    @:public @column.NullableNetType @column.PropertyName { get; set; }
+    }
+}
+}
+
+/// <summary>
+/// @(@Model.BusName)更新输入参数
+/// </summary>
+public class Update@(Model.ClassName)Input : Add@(Model.ClassName)Input
+{
+@foreach (var column in Model.PrimaryFields){
+    @:/// <summary>
+    @:/// @column.ColumnComment
+    @:/// </summary>
+    @:[Required(ErrorMessage = "@(column.ColumnComment)不能为空")]
+    if (@column.NetType == "Guid" && @column.PropertyName == "Id") {
+    @:public @column.NullableNetType @column.PropertyName { get; set; }
+    } else if (@column.IsPrimarykey) {
+    @:public @column.NullableNetType @column.PropertyName { get; set; }
+    }
+}
+}
+
+@foreach (var column in Model.ApiFields.GroupBy(u => new { u.IsTree, u.JoinConfig.EntityName }).Select(u => u.First()).ToList()) {
+var methodName = (column.IsTree ? "Tree" : "Page") + Model.ClassName + column.JoinConfig.EntityName;
+@:/// <summary>
+@:/// 获取@(column.JoinConfig.TableComment)数据输入参数
+@:/// </summary>
+@:public class @(methodName)Input : Base@(column.IsTree ? "Dropdown" : "Page")Input
+@:{
+    if (!column.IsTree) {
+    @:/// <summary>
+    @:/// 数据来自于表
+    @:/// </summary>
+    @:public bool All { get; set; }
+    }
+@:}
+@:
+}
+@if (Model.HasStatus) {
+@:/// <summary>
+@:/// 设置状态输入参数
+@:/// </summary>
+@:public class Set@(Model.ClassName)StatusInput : BaseStatusInput
+@:{
+foreach (var column in Model.AllFields.Where(u => u.IsPrimarykey && (u.NetType == "Guid" && u.PropertyName == "Id" || !(u.NetType == "long" && u.PropertyName == "Id")))) {
+    @:/// <summary>
+    @:/// @column.ColumnComment
+    @:/// </summary>
+    @:[Required(ErrorMessage = "@(column.ColumnComment)不能为空")]
+    if (column.NetType == "Guid" && column.PropertyName == "Id") {
+    @:public new @column.NullableNetType @column.PropertyName { get; set; }
+    } else if (column.IsPrimarykey) {
+    @:public @column.NullableNetType @column.PropertyName { get; set; }
+    }
+}
+@:}
+@:
+}
+/// <summary>
+/// @(Model.BusName)主键查询输入参数
+/// </summary>
+public class QueryById@(@Model.ClassName)Input : Primarykey@(Model.ClassName)Input
+{
+}
+
+@if (Model.ImportFields?.Count > 0){
+@:/// <summary>
+@:/// @(Model.BusName)主键查询输入参数
+@:/// </summary>
+@:public class Export@(@Model.ClassName)Input : Page@(@Model.ClassName)Input
+@:{
+    @:/// <summary>
+    @:/// 需要导入的主键集
+    @:/// </summary>
+    @:[ImporterHeader(IsIgnore = true)]
+    @:[ExporterHeader(IsIgnore = true)]
+    @:public List<@(Model.PrimaryFields.First().NetType)> SelectKeyList { get; set; }
+@:}
+@:
+@:/// <summary>
+@:/// @(Model.BusName)数据导入实体
+@:/// </summary>
+@:[ExcelImporter(SheetIndex = 1, IsOnlyErrorRows = true)]
+@:public class Import@(Model.ClassName)Input : BaseImportInput
+@:{
+foreach (var column in Model.AllFields) {
+    if (@column.NetType == "Guid" && @column.PropertyName == "Id") {
+    @:/// <summary>
+    @:/// 记录Id
+    @:/// </summary>
+    @:[ImporterHeader(IsIgnore = true)]
+    @:[ExporterHeader(IsIgnore = true)]
+    @:public new @column.NullableNetType @column.PropertyName { get; set; }
+    @:
+    }
+}
+foreach (var column in Model.ImportFields) {
+    var headerName = (column.IsRequired ? "*" : "") + column.ColumnComment;
+    if (column.HasJoinTable || column.IsDict) {
+    @:/// <summary>
+    @:/// @column.ColumnComment 关联值
+    @:/// </summary>
+    @:[ImporterHeader(IsIgnore = true)]
+    @:[ExporterHeader(IsIgnore = true)]
+    @:public @column.NullableNetType @column.PropertyName { get; set; }
+    @:
+    @:/// <summary>
+    @:/// @column.ColumnComment 文本
+    @:/// </summary>
+    if (column.IsDict) {
+    @:[Dict("@(column.DictConfig?.Code)"@(column.IsRequired ? "" : ""))]
+    }
+    @:[ImporterHeader(Name = "@(headerName)")]
+    @:[ExporterHeader("@(headerName)", Format = "@", Width = 25, IsBold = true)]
+    @:public string @(column.PropertyName + "Label") { get; set; }
+    } else {
+    @:/// <summary>
+    @:/// @column.ColumnComment
+    @:/// </summary>
+    if (column.IsConst) {
+    @:[Const(nameof(@column.DictConfig?.Code))]
+    }
+    if (column.IsEnum) {
+    @:[Dict(nameof(@column.DictConfig?.Code)@(column.IsRequired ? "" : ""))]
+    }
+    @:[ImporterHeader(Name = "@(headerName)")]
+    @:[ExporterHeader("@(headerName)", Format = "@", Width = 25, IsBold = true)]
+    @:public @column.NullableNetType @column.PropertyName { get; set; }
+    }
+    @:
+    }
+@:}
+}

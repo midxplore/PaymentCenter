@@ -1,0 +1,46 @@
+# 收款账号分配系统 —— 本地开发用 PostgreSQL（OrbStack / Docker）
+#
+# 启动：docker compose -f docker/docker-compose.pg.yml up -d
+# 停止：docker compose -f docker/docker-compose.pg.yml down
+# 清库：docker compose -f docker/docker-compose.pg.yml down -v
+#
+# 设计说明：
+#   * 仅绑定 127.0.0.1，不对局域网暴露。
+#   * 使用 trust 认证（本地开发专用，不设密码，避免开发机上的口令散落）；
+#     生产环境必须改为 scram-sha-256 + 独立密钥管理。
+#   * 端口用 55432 而非 5432，避免与本机其他项目的 PG 冲突。
+#   * 开启慢查询日志（>200ms），便于压测时定位锁等待。
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: paymentcenter-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: paymentcenter
+      POSTGRES_USER: payment
+      POSTGRES_HOST_AUTH_METHOD: trust
+      TZ: Asia/Shanghai
+      PGTZ: Asia/Shanghai
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - paymentcenter_pgdata:/var/lib/postgresql/data
+    command:
+      - postgres
+      - -c
+      - max_connections=200
+      - -c
+      - log_min_duration_statement=200
+      - -c
+      - deadlock_timeout=1s
+      - -c
+      - log_lock_waits=on
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U payment -d paymentcenter"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  paymentcenter_pgdata:

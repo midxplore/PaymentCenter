@@ -1,0 +1,483 @@
+﻿// Admin.NET 项目的版权、商标、专利和其他相关权利均受相应法律法规的保护。使用本项目应遵守相关法律法规和许可证的要求。
+//
+// 本项目主要遵循 MIT 许可证和 Apache 许可证（版本 2.0）进行分发和使用。许可证位于源代码树根目录中的 LICENSE-MIT 和 LICENSE-APACHE 文件。
+//
+// 不得利用本项目从事危害国家安全、扰乱社会秩序、侵犯他人合法权益等法律法规禁止的活动！任何基于本项目二次开发而产生的一切法律纠纷和责任，我们不承担任何责任！
+
+////////////////////////////////////////////////////////////////////
+// 作者：@(Model.AuthorName ?? "Admin.NET")
+// 时间：@(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"))
+// 邮箱：@(Model.Email ?? "Admin.NET@qq.com")
+////////////////////////////////////////////////////////////////////
+
+using Furion.DatabaseAccessor;
+using Mapster;
+using Microsoft.AspNetCore.Http;
+using NewLife.Reflection;
+
+namespace @(Model.NameSpace);
+
+/// <summary>
+/// @(Model.BusName)服务 🧩
+/// </summary>
+[ApiDescriptionSettings(@(Model.ProjectLastName)Const.GroupName, Order = 100)]
+public class @(Model.ClassName)Service : IDynamicApiController, ITransient
+{
+    private readonly SqlSugarRepository<@(Model.ClassName)> _@(Model.LowerClassName)Rep;
+    @if (Model.ImportFields.Any()) {
+    @:private readonly SysDictTypeService _sysDictTypeService;
+    }
+    @if (Model.UploadFields.Any()) {
+    @:private readonly SysFileService _sysFileService;
+    }
+    @if (Model.DropdownFields.Any() || Model.UploadFields.Any()) {
+    @:private readonly ISqlSugarClient _db;
+    }
+
+    public @(Model.ClassName)Service(SqlSugarRepository<@(Model.ClassName)> @(Model.LowerClassName)Rep@(Model.ImportFields.Any() ? ", SysDictTypeService sysDictTypeService" : "")@(Model.DropdownFields.Any() ? ", ISqlSugarClient sqlSugarClient" : "")@(Model.UploadFields.Any() ? ", SysFileService sysFileService" : ""))
+    {
+        _@(Model.LowerClassName)Rep = @(Model.LowerClassName)Rep;
+        @if (Model.DropdownFields.Any()) {
+        @:_db = sqlSugarClient;
+        }
+        @if (Model.UploadFields.Any()) {
+        @:_sysFileService = sysFileService;
+        }
+        @if (Model.ImportFields.Any()) {
+        @:_sysDictTypeService = sysDictTypeService;
+        }
+    }
+
+    /// <summary>
+    /// 分页查询@(Model.BusName) 🔖
+    /// </summary>
+    /// <param name="input"></param>
+    /// <returns></returns>
+    [DisplayName("分页查询@(Model.BusName)")]
+    [ApiDescriptionSettings(Name = "Page"), HttpPost]
+    public async Task<SqlSugarPagedList<Page@(Model.ClassName)Output>> Page(Page@(Model.ClassName)Input input)
+    {
+        input.Keyword = input.Keyword?.Trim();
+        var query = _@(Model.LowerClassName)Rep.AsQueryable()
+@{
+        string joinTableName = "u";
+          // 关键字模糊查询
+        if (Model.QueryFields.Any(u => u.QueryType == "like")) {
+            @:.WhereIF(!string.IsNullOrWhiteSpace(input.Keyword), u => @string.Join(" || ", Model.QueryFields.Where(u => u.QueryType == "like").Select(col => $"u.{col.PropertyName}.Contains(input.Keyword)")))
+        }
+
+        // 单字段模糊查询
+        foreach(var column in Model.QueryFields.Where(u => u.QueryType == "like")) {
+            @:.WhereIF(!string.IsNullOrWhiteSpace(input.@(column.PropertyName)), u => u.@(column.PropertyName).Contains(input.@(column.PropertyName).Trim()))
+        }
+
+        // 字段组合查询
+        foreach(var column in Model.QueryFields.Where(u => u.QueryType != "like")) {
+            if (column.NetType.TrimEnd('?') == "string") {
+            @:.WhereIF(!string.IsNullOrWhiteSpace(input.@(column.PropertyName)), u => u.@(column.PropertyName) == input.@(column.PropertyName))
+            } else if (column.NetType.TrimEnd('?') == "int" || column.NetType.TrimEnd('?') == "long") {
+            @:.WhereIF(input.@(column.PropertyName) != null, u => u.@(column.PropertyName) @(column.QueryType) input.@(column.PropertyName))
+            } else if (column.NetType.TrimEnd('?').EndsWith("Enum") || column.NetType.TrimEnd('?').EndsWith("bool")) {
+            @:.WhereIF(input.@(column.PropertyName).HasValue, u => u.@(column.PropertyName) == input.@(column.PropertyName))
+            } else if (column.NetType.TrimEnd('?') == "DateTime" && column.QueryType == "~") {
+            @:.WhereIF(input.@(column.PropertyName)Range?.Length == 2, u => u.@(column.PropertyName) >= input.@(column.PropertyName)Range[0] && u.@(column.PropertyName) <= input.@(column.PropertyName)Range[1])
+            }
+        }
+        // 联表
+        if (Model.HasJoinTable) {
+            foreach (var column in Model.TableFields.Where(u => (u.IsForeignKey || u.IsTree) && !u.Multiple)) {
+            joinTableName += ", " + column.LeftJoinAliasName;
+            @:.LeftJoin<@(column.JoinConfig?.EntityName)>((@joinTableName) => u.@(column.PropertyName) == @(column.LeftJoinAliasName).@(column.JoinConfig?.LinkPropertyName))
+            }
+            // 查询列表
+            @:.Select((@joinTableName) => new Page@(Model.ClassName)Output
+            @:{
+            foreach (var column in Model.TableFields) {
+                @:@(column.PropertyName) = u.@(column.PropertyName),
+                if (column.IsForeignKey || column.IsTree) {
+                    if (column.Multiple) {
+                @:@(column.LeftJoinPropertyName) = SqlFunc.Subqueryable<@(column.JoinConfig?.EntityName)>().Where(@(column.LeftJoinAliasName) => u.@(column.PropertyName).Contains(@(column.LeftJoinAliasName).@(column.JoinConfig?.LinkPropertyName).ToString())).SelectStringJoin(@(column.LeftJoinAliasName) => @(column.LeftJoinAliasName).@(column.JoinConfig.DisplayPropertyNames.Split(",").First()), ","),
+                    } else {
+                @:@(column.LeftJoinPropertyName) = @(column.DisplayPropertyNames),
+                    }
+                }
+            }
+            @:}, true);
+        } else {
+            // 无联表
+            @:.Select<Page@(Model.ClassName)Output>();
+        }
+        @:query = query.MergeTable();
+        if (Model.TableFields.Any(u => u.IsUpload)) {
+        @:query = query.Mapper(u => {
+        foreach (var column in Model.TableFields.Where(u => u.IsUpload)) {
+           @:if (!u.@(column.PropertyName).IsNullOrEmpty()) u.@(column.LeftJoinPropertyName) =  _db.Queryable<SysFile>().First(w => w.Url == u.@(column.PropertyName));
+        }
+        @:});
+        }
+}
+		return await query.OrderBuilder(input).ToPagedListAsync(input.Page, input.PageSize);
+    }
+
+    /// <summary>
+    /// 获取@(Model.BusName)列表 🔖
+    /// </summary>
+    /// <returns></returns>
+    [DisplayName("获取@(Model.BusName)列表")]
+    [ApiDescriptionSettings(Name = "List"), HttpGet]
+    public async Task<List<@(Model.ClassName)>> GetList([FromQuery] Page@(@Model.ClassName)Input input) {
+        return await _@(Model.LowerClassName)Rep.AsQueryable()
+        @foreach(var column in Model.QueryFields.Where(u => u.QueryType == "like")) {
+            @:.WhereIF(!string.IsNullOrWhiteSpace(input.@(column.PropertyName)?.Trim()), u => u.@(column.PropertyName).Contains(input.@(column.PropertyName).Trim()))
+        }
+        @foreach(var column in Model.QueryFields.Where(u => u.QueryType != "like")) {
+            if (column.NetType.TrimEnd('?') == "string") {
+            @:.WhereIF(!string.IsNullOrWhiteSpace(input.@(column.PropertyName)?.Trim()), u => u.@(column.PropertyName) == input.@(column.PropertyName))
+            } else if (column.NetType.TrimEnd('?') == "int" || column.NetType.TrimEnd('?') == "long") {
+            @:.WhereIF(input.@(column.PropertyName) != null, u => u.@(column.PropertyName) @(column.QueryType) input.@(column.PropertyName))
+            } else if (column.NetType.TrimEnd('?').EndsWith("Enum") || column.NetType.TrimEnd('?').EndsWith("bool")) {
+            @:.WhereIF(input.@(column.PropertyName).HasValue, u => u.@(column.PropertyName) == input.@(column.PropertyName))
+            } else if (column.NetType.TrimEnd('?') == "DateTime" && column.QueryType == "~") {
+            @:.WhereIF(input.@(column.PropertyName)Range?.Length == 2, u => u.@(column.PropertyName) >= input.@(column.PropertyName)Range[0] && u.@(column.PropertyName) <= input.@(column.PropertyName)Range[1])
+            }
+        }
+            .ToListAsync();
+    }
+
+    /// <summary>
+    /// 获取@(Model.BusName)详情 ℹ️
+    /// </summary>
+    /// <param name="input"></param>
+    /// <returns></returns>
+    [DisplayName("获取@(Model.BusName)详情")]
+    [ApiDescriptionSettings(Name = "Detail"), HttpGet]
+    public async Task<Detail@(@Model.ClassName)Output> Detail([FromQuery] QueryById@(Model.ClassName)Input input)
+    {
+        var query = _@(Model.LowerClassName)Rep.AsQueryable()
+@{
+        joinTableName = "u";
+        // 联表
+        if (Model.HasJoinTable) {
+            foreach (var column in Model.TableFields.Where(u => (u.IsForeignKey || u.IsTree) && !u.Multiple)) {
+            joinTableName += ", " + column.LeftJoinAliasName;
+            @:.LeftJoin<@(column.JoinConfig?.EntityName)>((@joinTableName) => u.@(column.PropertyName) == @(column.LeftJoinAliasName).@(column.JoinConfig?.LinkPropertyName))
+            }
+            // 查询列表
+            @:.Select((@joinTableName) => new Detail@(@Model.ClassName)Output
+            @:{
+            foreach (var column in Model.TableFields) {
+                @:@(column.PropertyName) = u.@(column.PropertyName),
+                if (column.IsForeignKey || column.IsTree) {
+                    if (column.Multiple) {
+                @:@(column.LeftJoinPropertyName) = SqlFunc.Subqueryable<@(column.JoinConfig?.EntityName)>().Where(@(column.LeftJoinAliasName) => u.@(column.PropertyName).Contains(@(column.LeftJoinAliasName).@(column.JoinConfig?.LinkPropertyName).ToString())).SelectStringJoin(@(column.LeftJoinAliasName) => @(column.LeftJoinAliasName).@(column.JoinConfig.DisplayPropertyNames.Split(",").First()), ","),
+                    } else {
+                @:@(column.LeftJoinPropertyName) = @(column.DisplayPropertyNames),
+                    }
+                }
+            }
+            @:}, true);
+        } else {
+        // 无联表
+            @:.Select<Detail@(@Model.ClassName)Output>();
+        }
+@:        query = query.MergeTable();
+@if (Model.TableFields.Any(u => u.IsUpload)) {
+@:        var result = await query.FirstAsync(u => @Model.PrimaryKeysFormat(" && ", "u.{0} == input.{0}"));
+@:        if (result != null)
+@:        {
+        foreach (var column in Model.TableFields.Where(u => u.IsUpload)) {
+@:            if (!result.@(column.PropertyName).IsNullOrEmpty()) result.@(column.LeftJoinPropertyName) = _db.Queryable<SysFile>().First(w => w.Url == result.@(column.PropertyName));
+        }
+@:        }
+@:        return result;
+@} else {
+@:        return await query.FirstAsync(u => @Model.PrimaryKeysFormat(" && ", "u.{0} == input.{0}"));
+@}
+    }
+}
+
+    /// <summary>
+    /// 增加@(Model.BusName) ➕
+    /// </summary>
+    /// <param name="input"></param>
+    /// <returns></returns>
+    [DisplayName("增加@(Model.BusName)")]
+    [ApiDescriptionSettings(Name = "Add"), HttpPost]
+    public async Task<@(Model.PrimaryFields.First().NetType)> Add(Add@(Model.ClassName)Input input)
+    {
+        var entity = input.Adapt<@(Model.ClassName)>();
+
+        @foreach (var column in Model.AllFields.Where(u => u.IsUnique)) {
+        @:if (@(column.IsRequired ? "" : $"input.{column.PropertyName} != null && ")await _@(Model.LowerClassName)Rep.IsAnyAsync(u => u.@(column.PropertyName) == input.@(column.PropertyName))) throw Oops.Oh("@(column.ColumnComment)已存在");
+        }
+
+        return await _@(Model.LowerClassName)Rep.InsertAsync(entity) ? entity.@(Model.PrimaryFields.First().PropertyName) : default;
+    }
+
+    /// <summary>
+    /// 更新@(Model.BusName) ✏️
+    /// </summary>
+    /// <param name="input"></param>
+    /// <returns></returns>
+    [DisplayName("更新@(Model.BusName)")]
+    [ApiDescriptionSettings(Name = "Update"), HttpPost]
+    public async Task Update(Update@(Model.ClassName)Input input)
+    {
+        @foreach (var column in Model.AllFields.Where(u => u.IsUnique)) {
+        var preWhere = column.IsRequired ? "" : $"input.{column.PropertyName} != null && ";
+        var preWhere2 = Model.PrimaryKeysFormat(" && ", "u.{0} != input.{0}");
+        @:if (@(preWhere)await _@(Model.LowerClassName)Rep.IsAnyAsync(u => @preWhere2 && u.@(column.PropertyName) == input.@(column.PropertyName))) throw Oops.Oh("@(column.ColumnComment)已存在");
+        }
+        var entity = await _@(Model.LowerClassName)Rep.GetFirstAsync(u => @Model.PrimaryKeysFormat(" && ", "u.{0} == input.{0}")) ?? throw Oops.Oh(ErrorCodeEnum.D1002);
+        entity.Copy(input);
+        await _@(Model.LowerClassName)Rep.AsUpdateable(entity).ExecuteCommandAsync();
+    }
+
+    /// <summary>
+    /// 删除@(Model.BusName) ❌
+    /// </summary>
+    /// <param name="input"></param>
+    /// <returns></returns>
+    [DisplayName("删除@(Model.BusName)")]
+    [ApiDescriptionSettings(Name = "Delete"), HttpPost]
+    public async Task Delete(Primarykey@(Model.ClassName)Input input)
+    {
+        var entity = await _@(Model.LowerClassName)Rep.GetFirstAsync(u => @Model.PrimaryKeysFormat(" && ", "u.{0} == input.{0}")) ?? throw Oops.Oh(ErrorCodeEnum.D1002);
+        @if (Model.AllFields.Any(u => u.PropertyName == "IsDelete")) {
+        @:await _@(Model.LowerClassName)Rep.FakeDeleteAsync(entity);   // 假删除
+        // await _@(Model.LowerClassName)Rep.DeleteAsync(entity);   //真删除
+        } else {
+        // await _@(Model.LowerClassName)Rep.FakeDeleteAsync(entity);   // 假删除
+        @:await _@(Model.LowerClassName)Rep.DeleteAsync(entity);   //真删除
+        }
+    }
+
+    /// <summary>
+    /// 批量删除@(Model.BusName) ❌
+    /// </summary>
+    /// <param name="input"></param>
+    /// <returns></returns>
+    [DisplayName("批量删除@(Model.BusName)")]
+    [ApiDescriptionSettings(Name = "BatchDelete"), HttpPost]
+    public async Task<int> BatchDelete([Required(ErrorMessage = "主键列表不能为空")]List<@(Model.IsOnlyIdPrimary ? Model.PrimaryFields.First().NetType : $"Delete{Model.ClassName}")> input)
+    {
+        @if (Model.IsOnlyIdPrimary) {
+        @:var list = await _@(Model.LowerClassName)Rep.AsQueryable().Where(u => input.Contains(u.Id)).ToListAsync();
+        } else {
+        @:var exp = Expressionable.Create<@(Model.ClassName)>();
+        @:foreach (var row in input) exp = exp.Or(it => @Model.PrimaryKeysFormat(" && ", "it.{0} == row.{0}"));
+        @:var list = await _@(Model.LowerClassName)Rep.AsQueryable().Where(exp.ToExpression()).ToListAsync();
+        }
+        @if (Model.AllFields.Any(u => u.PropertyName == "IsDelete")) {
+        @:return await _@(Model.LowerClassName)Rep.FakeDeleteAsync(list);   // 假删除
+        //return await _@(Model.LowerClassName)Rep.DeleteAsync(list);   //真删除
+        } else {
+        //return await _@(Model.LowerClassName)Rep.FakeDeleteAsync(list) ? list.Count : 0;  // 假删除
+        @:return await _@(Model.LowerClassName)Rep.DeleteAsync(list) ? list.Count : 0;   //真删除
+        }
+    }
+
+@if (Model.HasStatus) {
+    @:
+    @:/// <summary>
+    @:/// 设置@(Model.BusName)状态 🚫
+    @:/// </summary>
+    @:/// <param name="input"></param>
+    @:/// <returns></returns>
+    @:[DisplayName("设置@(Model.BusName)状态")]
+    @:[ApiDescriptionSettings(Name = "SetStatus"), HttpPost]
+    @:public async Task SetStatus(Set@(Model.ClassName)StatusInput input)
+    @:{
+        @:await _@(Model.LowerClassName)Rep.AsUpdateable().SetColumns(u => u.Status, input.Status).Where(u => @Model.PrimaryKeysFormat(" && ", "u.{0} == input.{0}")).ExecuteCommandAsync();
+    @:}
+}
+
+@foreach (var column in Model.UploadFields) {
+    @:/// <summary>
+    @:/// 上传@(column.ColumnComment) ⬆️
+    @:/// </summary>
+    @:/// <param name="file"></param>
+    @:/// <returns></returns>
+    @:[DisplayName("上传@(column.ColumnComment)")]
+    @:[ApiDescriptionSettings(Name = "Upload@(column.PropertyName)"), HttpPost]
+    @:public async Task<SysFile> Upload@(column.PropertyName)([Required] IFormFile file)
+    @:{
+        @:return await _sysFileService.UploadFile(new UploadFileInput { File = file });
+    @:}
+    @:
+    }
+
+@foreach (var column in Model.ApiFields.GroupBy(u => new { u.IsTree, u.JoinConfig.EntityName }).Select(u => u.First()).ToList()) {
+    var extarName = column.IsTree ? "Tree" : "Page";
+    var methodName = column.JoinConfig.EntityName + extarName;
+    @:/// <summary>
+    @:/// 获取@(column.JoinConfig.TableComment)数据 ⬆️
+    @:/// </summary>
+    @:/// <param name="input"></param>
+    @:/// <returns></returns>
+    @:[DisplayName("获取@(column.JoinConfig.TableComment)数据")]
+    @:[ApiDescriptionSettings(Name = "@(methodName)"), HttpPost]
+    @:public async Task<@(column.IsTree ? "List" : "SqlSugarPagedList")<@(column.JoinConfig.EntityName)>> @(methodName)(@(extarName + Model.ClassName + column.JoinConfig.EntityName)Input input)
+    @:{
+        @:return await _db.Queryable<@(column.JoinConfig.EntityName)>()
+    if (!string.IsNullOrWhiteSpace(column.JoinConfig.SearchPropertyName)) {
+            @:.WhereIF(!string.IsNullOrWhiteSpace(input.Keyword), u => u.@(column.JoinConfig.SearchPropertyName).Contains(input.Keyword))
+    }
+    if (column.IsTree) {
+        if (string.IsNullOrWhiteSpace(column.JoinConfig.ParentPropertyName)) {
+            @:.ToListAsync();
+        } else {
+            @:.ToTreeAsync(u => u.Children, u => u.@(column.JoinConfig.ParentPropertyName), 0);
+        }
+    } else {
+            @:.InnerJoinIF<@Model.ClassName>(!input.All, (u, r) => @(column.Multiple ? $"r.{column.PropertyName}.Contains(u.{column.JoinConfig.LinkPropertyName}.ToString())" : $"u.{column.JoinConfig.LinkPropertyName} == r.{column.PropertyName}"))
+            @:.Select(u => u).MergeTable().OrderBuilder(input)
+            @:.ToPagedListAsync(input.Page, input.PageSize);
+    }
+    @:}
+    @:
+}
+
+@if (Model.ImportFields.Count > 0) {
+    @:/// <summary>
+    @:/// 导出@(Model.BusName)记录 🔖
+    @:/// </summary>
+    @:/// <param name="input"></param>
+    @:/// <returns></returns>
+    @:[DisplayName("导出@(Model.BusName)记录")]
+    @:[ApiDescriptionSettings(Name = "Export"), HttpPost, NonUnify]
+    @:public async Task<IActionResult> Export(Export@(@Model.ClassName)Input input)
+    @:{
+        @:var list = (await Page(input)).Items?.Adapt<List<Export@(Model.ClassName)Output>>() ?? new();
+        @:if (input.SelectKeyList?.Count > 0) list = list.Where(x => input.SelectKeyList.Contains(x.@(Model.PrimaryFields.First().PropertyName))).ToList();
+        var dictFields = Model.TableFields.Where(x => x.IsImport && x.IsDict) ?? default;
+        foreach (var column in dictFields) {
+        @:var @(column.LowerPropertyName)DictMap = _sysDictTypeService.GetDataList(new GetDataDictTypeInput { Code = "@(column.DictConfig.Code)" }).Result.ToDictionary(x => x.Value, x => x.Label);
+        }
+        if (dictFields.Count() > 0) {
+        @:list.ForEach(e => {
+        foreach (var column in dictFields) {
+            @:e.@(column.PropertyName + "Label") = @(column.LowerPropertyName)DictMap.GetValueOrDefault(e.@(column.PropertyName) ?? "", e.@(column.PropertyName));
+        }
+        @:});
+        }
+        @:return ExcelHelper.ExportTemplate(list, "@(Model.BusName)导出记录");
+    @:}
+    @:
+    @:/// <summary>
+    @:/// 下载@(Model.BusName)数据导入模板 ⬇️
+    @:/// </summary>
+    @:/// <returns></returns>
+    @:[DisplayName("下载@(Model.BusName)数据导入模板")]
+    @:[ApiDescriptionSettings(Name = "Import"), HttpGet, NonUnify]
+    @:public IActionResult DownloadTemplate()
+    @:{
+        var fieldsList = Model.ImportFields.Where(u => u.IsForeignKey || u.IsTree).ToList();
+        if (fieldsList.Any()) {
+        @:return ExcelHelper.ExportTemplate(new List<Export@(Model.ClassName)Output>(), "@(Model.BusName)导入模板", (_, info) =>
+        @:{
+            @:// 自定义指定列下拉框数据源
+            foreach (var column in fieldsList) {
+            var columnList = column.JoinConfig.DisplayPropertyNames.Split(",").Select(n => $"{{u.{n}}}").ToList();
+            @:if (nameof(Export@(Model.ClassName)Output.@(column.PropertyName + "Label")) == info.Name) return _db.Queryable<@(column.JoinConfig.EntityName)>().Select(u => $"@(string.Join("-", columnList))").Distinct().ToList();
+            }
+            @:return null;
+        @:});
+        } else {
+        @:return ExcelHelper.ExportTemplate(new List<Export@(Model.ClassName)Output>(), "@(Model.BusName)导入模板");
+        }
+    @:}
+    @:
+    @:/// <summary>
+    @:/// 导入@(Model.BusName)记录 💾
+    @:/// </summary>
+    @:/// <returns></returns>
+    @:[DisplayName("导入@(Model.BusName)记录")]
+    @:[ApiDescriptionSettings(Name = "Import"), HttpPost, NonUnify, UnitOfWork]
+    @:public IActionResult ImportData([Required] IFormFile file)
+    @:{
+        @:lock (this)
+        @:{
+            var dictTableField = Model.TableFields.Where(x => x.IsImport && x.IsDict) ?? default;
+            foreach (var column in dictTableField) {
+            @:var @(column.LowerPropertyName)DictMap = _sysDictTypeService.GetDataList(new GetDataDictTypeInput { Code = "@(column.DictConfig.Code)" }).Result.ToDictionary(x => x.Label!, x => x.Value);
+            }
+
+            @:var stream = ExcelHelper.ImportData<Import@(Model.ClassName)Input, @(Model.ClassName)>(file, (list, markerErrorAction) =>
+            @:{
+                @:_db.Utilities.PageEach(list, 1024, pageItems =>
+                @:{
+                    foreach (var column in Model.ImportFields.Where(u => u.IsForeignKey || u.IsTree)) {
+                    @:// 链接 @(column.ColumnComment)
+                    @:var @(column.LowerPropertyName)LabelList = pageItems.Where(x => x.@(column.PropertyName + "Label") != null).Select(x => x.@(column.PropertyName + "Label")).Distinct().ToList();
+                    @:if (@(column.LowerPropertyName)LabelList.Any()) {
+                        var columnList = column.JoinConfig.DisplayPropertyNames.Split(",").Select(n => $"{{u.{n}}}").ToList();
+                        @:var @(column.LowerPropertyName)LinkMap = _db.Queryable<@(column.JoinConfig.EntityName)>().Where(u => @(column.LowerPropertyName)LabelList.Contains($"@(string.Join("-", columnList))")).ToList().ToDictionary(u => $"@(string.Join("-", columnList))", u => u.@(column.JoinConfig.LinkPropertyName));
+                        @:pageItems.ForEach(e => {
+                            if (column.Multiple) {
+                            @:e.@(column.PropertyName) = e.@(column.PropertyName + "Label").Split(",").Select(x => @(column.LowerPropertyName)LinkMap.GetValueOrDefault(x)).Join();
+                            } else {
+                            @:e.@(column.PropertyName) = @(column.LowerPropertyName)LinkMap.GetValueOrDefault(e.@(column.PropertyName + "Label") ?? "");
+                            }
+                            @:if (e.@(column.PropertyName) == null) e.Error = "@(column.ColumnComment)链接失败";
+                        @:});
+                    @:}
+                    }
+
+                    if (dictTableField.Any()) {
+                    @:
+                    @:// 映射字典值
+                    @:foreach(var item in pageItems) {
+                        foreach (var column in dictTableField) {
+                        @:if (string.IsNullOrWhiteSpace(item.@(column.PropertyName + "Label"))) continue;
+                        @:item.@(column.PropertyName) = @(column.LowerPropertyName)DictMap.GetValueOrDefault(item.@(column.PropertyName + "Label"));
+                        @:if (item.@(column.PropertyName) == null) item.Error = "@(column.ColumnComment)字典映射失败";
+                        }
+                    @:}
+                    }
+
+                    @:
+                    @:// 校验并过滤必填基本类型为null的字段
+                    @:var rows = pageItems.Where(x => {
+                        foreach (var column in Model.ImportFields.Where(x => x.IsRequired && Regex.IsMatch(x.NetType, "(int|long|double|float|bool|Enum[?]?)"))){
+                        @:if (!string.IsNullOrWhiteSpace(x.Error)) return false;
+                        @:if (x.@(column.PropertyName) == null) {
+                            @:x.Error = "@(column.ColumnComment)不能为空";
+                            @:return false;
+                        @:}
+                        }
+                        @:return true;
+                    @:}).Adapt<List<@(Model.ClassName)>>();
+
+                    @:
+                    @:var storageable = _@(Model.LowerClassName)Rep.Context.Storageable(rows)
+                        foreach (var column in Model.ImportFields) {
+                        if (column.IsRequired) {
+                        if(column.NetType.TrimEnd('?') == "string") {
+                        @:.SplitError(it => string.IsNullOrWhiteSpace(it.Item.@(column.PropertyName)), "@(column.ColumnComment)不能为空")
+                        } else if(column.NetType.EndsWith('?') == true) {
+                        @:.SplitError(it => it.Item.@(column.PropertyName) == null, "@(column.ColumnComment)不能为空")
+                        }}
+                        if (column.NetType?.TrimEnd('?') == "string" && column.ColumnLength > 0) {
+                        @:.SplitError(it => it.Item.@(column.PropertyName)?.Length > @(column.ColumnLength), "@(column.ColumnComment)长度不能超过@(column.ColumnLength)个字符")
+                        }
+                        if (column.IsUnique) {
+                        @:.WhereColumns(it => it.@(column.PropertyName)).SplitError(it => it.Any(), "@(column.ColumnComment)已存在")
+                        }}
+                        @:.SplitInsert(_ => true)
+                        @:.ToStorage();
+
+                    @:
+                    @:storageable.BulkCopy();
+                    @:storageable.BulkUpdate();
+                    @:
+                    @:// 标记错误信息
+                    @:markerErrorAction.Invoke(storageable, pageItems, rows);
+                @:});
+            @:});
+            @:
+            @:return stream;
+        @:}
+    @:}
+}
+}

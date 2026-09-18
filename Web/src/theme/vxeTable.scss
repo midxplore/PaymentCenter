@@ -1,0 +1,144 @@
+@import 'vxe-table/styles/all.scss';
+@import 'vxe-pc-ui/styles/all.scss';
+
+// 全局变量参考地址 https://github.com/x-extends/vxe-table/blob/master/styles/theme/base.scss
+:root {
+	--vxe-ui-font-family: var(--el-font-family);
+	// --vxe-ui-font-color: var(--el-text-color-primary); // 原：#606266;
+	// --vxe-ui-primary-color: var(--el-color-primary); // 原：#409eff;
+	// --vxe-ui-primary-lighten-color: var(--el-color-primary);
+	// --vxe-ui-table-row-height-small: 36px; // 原：40px
+	// --vxe-ui-table-row-height-mini: 32px; // 原：36px
+	// --vxe-ui-table-row-line-height: 18px; // 原：22px
+	// // --vxe-ui-table-header-font-weight: 500; // 原 700
+	// --vxe-ui-table-font-color: var(--el-text-color-primary);
+	// --vxe-ui-table-header-font-color: var(--el-text-color-primary);
+	// --vxe-ui-table-footer-font-color: var(--el-text-color-primary);
+	// --vxe-ui-table-cell-padding-left: 8px; // 原：10px
+	// --vxe-ui-table-cell-padding-right: 8px; // 原：10px
+	--vxe-ui-table-row-current-background-color: var(--el-color-primary-light-9);
+	--vxe-ui-table-row-hover-current-background-color: var(--el-color-primary-light-9);
+	--vxe-ui-table-border-width: 1px;
+}
+
+.vxe-toolbar {
+	padding: 0 0 6px 0;
+}
+
+.vxe-tools--operate > .vxe-button.size--mini,
+.vxe-custom--wrapper > .vxe-button.size--mini,
+.vxe-tools--wrapper > .vxe-button.size--mini {
+	height: 24px !important;
+	width: 24px !important;
+	min-width: 24px !important;
+	text-overflow: clip;
+	line-height: unset;
+	padding: 0 0.4em !important;
+}
+
+.vxe-cell {
+	padding-left: 5px !important;
+	padding-right: 5px !important;
+	user-select: text !important;
+
+	.el-button {
+		padding: 0 !important;
+	}
+}
+
+.vxe-pager.size--mini {
+	height: 30px;
+	margin-top: 2px;
+}
+
+// 在El-Dialog中的表格存在下拉选择框时，要加这个类 popupClassName: 'zIndex2023' (Vxe4.5.0生效) 否则弹出的下拉容器会被覆盖
+.zIndex2023 {
+	z-index: 2023 !important;
+}
+
+.popper-400 {
+	width: 400px !important;
+}
+
+.popper-400 .el-select-dropdown__list {
+	width: 100% !important;
+}
+
+.popper-400 .el-select-dropdown__option-item {
+	padding: 0 30px 0 10px !important;
+}
+
+// 表格内容颜色
+.vxe-table--render-default {
+	//color: var(--vxe-ui-font-color);
+	color: unset !important;
+}
+
+.vxe-table--header-wrapper {
+	color: unset !important;
+}
+
+// 表格分页颜色
+.vxe-pager {
+	color: unset !important;
+}
+
+// 表格默认样式-修复经典布局时自增情况
+.xGrid-style {
+	display: flex;
+	flex-direction: column;
+}
+
+// :deep(.xGrid-style .vxe-body--row.warning-row) {
+// 	background-color: var(--el-color-warning-light-9);
+// }
+// :deep(.xGrid-style .vxe-body--row.success-row) {
+// 	background-color: var(--el-color-success-light-9);
+// }
+
+// pager
+.vxe-pager {
+	.vxe-pager--prev-btn,
+	.vxe-pager--num-btn,
+	.vxe-pager--next-btn {
+		border: 0 !important;
+	}
+	.vxe-pager--num-btn {
+		&:not(.is--disabled) {
+			&.is--active {
+				background-color: var(--el-color-primary) !important;
+				color: var(--el-color-white) !important;
+			}
+			&:focus {
+				box-shadow: none !important;
+			}
+		}
+	}
+	&.size--mini {
+		margin-top: 0px;
+	}
+}
+
+.vxe-modal--wrapper.type--modal .vxe-modal--header,
+.vxe-modal--wrapper.type--alert .vxe-modal--header,
+.vxe-modal--wrapper.type--confirm .vxe-modal--header {
+	// border-bottom: 1px solid var(--vxe-ui-input-border-color);
+	background-color: var(--el-color-primary) !important;
+	color: white !important;
+}
+
+.vxe-modal--container {
+	margin: -1px !important;
+}
+
+.vxe-modal--zoom-btn:hover,
+.vxe-modal--close-btn:hover {
+	color: red !important;
+}
+
+// 解决el-dialog和vxe-tooltip弹出层z-index冲突问题
+// .vxe-modal--wrapper,
+// .vxe-tooltip--wrapper,
+// .vxe-table--filter-wrapper{
+//   z-index: 2023 !important;
+// }

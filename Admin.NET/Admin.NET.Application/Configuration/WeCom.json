@@ -1,0 +1,9 @@
+{
+  "$schema": "https://gitee.com/dotnetchina/Furion/raw/v4/schemas/v4/furion-schema.json",
+
+  // 企业微信群机器人消息推送
+  "WeCom": {
+    "WeComBotKeysAlert": [], // 推送异常/告警消息到企业微信群机器人的keys
+    "WeComRobotKeysScheduledTask": [] // 推送定时任务消息到企业微信群机器人的key
+  }
+}

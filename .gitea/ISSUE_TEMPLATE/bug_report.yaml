@@ -1,0 +1,76 @@
+---
+name: Bug 反馈
+about: Report a bug to help us improve
+title: '[bug]:简单说明'
+body:
+  - type: textarea
+    id: content
+    attributes:
+      label: 问题描述
+      description: 请详细描述您遇到的问题
+      placeholder: 填写遇到的问题
+    validations:
+      required: true
+
+  - type: input
+    id: system
+    attributes:
+      label: 操作系统环境
+      description: 请提供操作系统环境
+      placeholder: Linux、MacOS、Windows、Other
+    validations:
+      required: true
+
+  - type: input
+    id: net_version
+    attributes:
+      label: .NET版本
+      description: 请提供 .NET版本
+      placeholder: .net6.0、.net7.0、.net8.0、.net9.0
+    validations:
+      required: true
+
+  - type: input
+    id: node_version
+    attributes:
+      label: Node 版本
+      description: 请提供 Node 版本
+      placeholder: 18.18.0、20.20.4
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 重现步骤
+      description: 请列出重现问题的步骤
+    validations:
+      required: true
+
+  - type: textarea
+    id: expect
+    attributes:
+      label: 预期结果
+      description: 请描述您期望的结果
+    validations:
+      required: true
+
+  - type: textarea
+    id: result
+    attributes:
+      label: 实际结果
+      description: 请描述实际发生的情况
+    validations:
+      required: true
+
+  - type: dropdown
+    id: level
+    attributes:
+      label: 严重性
+      description: 请选择问题的严重性
+      options:
+        - 低
+        - 中
+        - 高
+    validations:
+      required: true

@@ -1,0 +1,97 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
+    <PublishReadyToRunComposite>true</PublishReadyToRunComposite>
+    <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
+    <UserSecretsId>ad9369d1-f29b-4f8f-a7df-8b4d7aa0726b</UserSecretsId>
+    <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+    <GenerateSatelliteAssembliesForCore>true</GenerateSatelliteAssembliesForCore>
+    <Copyright>Admin.NET</Copyright>
+    <Description>Admin.NET 通用权限开发平台</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="logs\**" />
+    <Compile Remove="publish\**" />
+    <Compile Remove="wwwroot\template_debug\**" />
+    <Content Remove="wwwroot\template_debug\**" />
+    <EmbeddedResource Remove="logs\**" />
+    <EmbeddedResource Remove="publish\**" />
+    <EmbeddedResource Remove="wwwroot\template_debug\**" />
+    <None Remove="logs\**" />
+    <None Remove="publish\**" />
+    <None Remove="wwwroot\template_debug\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Update="wwwroot\avatar\**" CopyToPublishDirectory="Never" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Update="wwwroot\template\**">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="GeoLite2-City.mmdb">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ip2region.db">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="sensitive-words.txt">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Update="wwwroot\upload\logo.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <!-- 机器本地配置覆盖目录：在 Configuration 之后被扫描，优先级最高。
+       用于在不改动共享的 Configuration/Database.Development.json（内含连接串）的前提下，
+       按开发机切换数据库。与 Database.*.json 同约定：只进输出目录、不随发布分发。 -->
+  <ItemGroup>
+    <Content Update="ConfigurationLocal\**\*.json">
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
+  <!-- ★ 必须保证 ConfigurationLocal 目录在输出目录与发布目录里**始终存在**。
+       为什么不能只靠上面的 <Content Update>：
+         Furion 的 InternalApp.AddJsonFiles 对 ConfigurationScanDirectories 里的
+         **每一个**目录无条件调用 Directory.GetFiles —— 目录不存在就直接抛
+         DirectoryNotFoundException。这个异常发生在**主机构建阶段**，
+         早于日志系统初始化，所以现象是「进程直接退出、logs/ 里什么都没有」，
+         只在控制台留一段栈，非常难归因。
+       而 MSBuild **不复制空目录**：上面那条 glob 只在目录里**有 json 文件**时才产出目录。
+       于是两种场景必然崩：
+         1) 开发者把 LocalOverride.json 移走（想切回 SQLite）后重新 build
+            → 目录随之从 bin 消失 → 下次启动崩；
+         2) dotnet publish → CopyToPublishDirectory=Never，目录不进产物
+            → **生产包启动即崩**（实测确认）。
+       MakeDir 无条件建目录。没有 json 时 Furion 扫到一个空目录，安静地不做覆盖，
+       正好是「回落共享配置」的正确行为。 -->
+  <Target Name="EnsureConfigurationLocalInOutput" AfterTargets="Build">
+    <MakeDir Directories="$(OutDir)ConfigurationLocal" />
+  </Target>
+  <Target Name="EnsureConfigurationLocalInPublish" AfterTargets="Publish">
+    <MakeDir Directories="$(PublishDir)ConfigurationLocal" />
+  </Target>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Admin.NET.Web.Core\Admin.NET.Web.Core.csproj" />
+  </ItemGroup>
+
+</Project>
