@@ -46,22 +46,9 @@
 		<Content Include="..\Admin.NET.Web.Entry\appsettings.Development.json" Link="appsettings.Development.json">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</Content>
-		<!-- 机器本地数据库覆盖（见 ConfigurationLocal/LocalOverride.json）。
-		     缺省不存在时，测试会落到 Configuration/Database.Development.json 指定的库。 -->
-		<Content Include="..\Admin.NET.Web.Entry\ConfigurationLocal\**\*.json"
-		         Link="ConfigurationLocal\%(RecursiveDir)%(Filename)%(Extension)">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</Content>
+		<!-- ★ 数据库只由 Application/Configuration/Database.json 决定（唯一来源），
+		     不要在这里加旁路配置目录 —— 多一个扫描目录就多一整类
+		     「目录不存在 → 主机构建期 DirectoryNotFoundException」的坑。 -->
 	</ItemGroup>
-
-	<!-- ★ 同 Web.Entry：目录**必须存在**，否则 Furion 的 AddJsonFiles 会对
-	     ConfigurationScanDirectories 里的 ConfigurationLocal 调 Directory.GetFiles 抛
-	     DirectoryNotFoundException（主机构建阶段，早于日志系统）。
-	     上面那条 glob 在「仓库里没有 LocalOverride.json」时匹配不到任何文件，
-	     MSBuild 也就不产出目录 → 测试宿主直接崩，表现为「一个用例都没跑起来」。
-	     MakeDir 保证目录存在；没有 json 时安静回落共享配置。 -->
-	<Target Name="EnsureConfigurationLocalInTestOutput" AfterTargets="Build">
-		<MakeDir Directories="$(OutDir)ConfigurationLocal" />
-	</Target>
 
 </Project>

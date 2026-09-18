@@ -311,11 +311,9 @@ public class Startup : AppStartup
         //    //u.OperationFilter<SwaggerHeaderTenantFilter>();
         //});
 
-        // 将IP地址数据库文件完全加载到内存，提升查询速度（以空间换时间，内存将会增加60-70M）
-        IpToolSettings.LoadInternationalDbToMemory = true;
-        // 设置默认查询器China和International
-        //IpToolSettings.DefalutSearcherType = IpSearcherType.China;
-        IpToolSettings.DefalutSearcherType = IpSearcherType.International;
+        // IP 归属地查询器：只保留 China（ip2region.db）。不要改回 International ——
+        // 它依赖约 60MB 的 GeoLite2-City.mmdb，该文件与 IPTools.International 包均已移除。
+        IpToolSettings.DefalutSearcherType = IpSearcherType.China;
 
         // 配置gzip与br的压缩等级为最优
         //services.Configure<BrotliCompressionProviderOptions>(options =>

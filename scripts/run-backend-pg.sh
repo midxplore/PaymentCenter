@@ -1,64 +1,46 @@
 #!/usr/bin/env bash
-# 启动后端（本地开发）
+# 启动后端（本地开发，**前台**运行）
 #
 # 用法：
-#   scripts/run-backend-pg.sh                     # 默认 PG，http://localhost:5005
+#   scripts/run-backend-pg.sh                     # 默认 http://localhost:5005
 #   URLS=http://localhost:5006 scripts/run-backend-pg.sh
-#   DB=sqlite scripts/run-backend-pg.sh           # 应急：切回 SQLite（见下）
 #   SKIP_BUILD=1 scripts/run-backend-pg.sh        # 跳过构建（快，但见下方警告）
 #
-# ─────────────────────────────────────────────────────────────────────────────
-# 数据库怎么定的（三处联动，改之前先看懂）
-#
-#   appsettings.json  ConfigurationScanDirectories = ["Configuration", "", "ConfigurationLocal"]
-#       ↓ Furion 按顺序扫描，**后扫描的优先级最高**（高于环境变量与根 appsettings*.json）
-#   bin/<cfg>/ConfigurationLocal/LocalOverride.json  ← 覆盖 ConnectionConfigs[0] 的 DbType/连接串
-#       ↓ 没有这个文件时
-#   Configuration/Database.Development.json          ← 回落目标（SQLite）
-#
-#   两个必须知道的事实：
-#     1) **Furion 读的是输出目录（bin/）里的那份**，不是仓库里的源文件。
-#        改了源目录的 LocalOverride.json 而不重新 build，运行时用的还是旧副本。
-#     2) **ConfigurationLocal 目录必须存在**，否则 Furion 在 AddJsonFiles 阶段抛
-#        DirectoryNotFoundException（主机构建期，早于日志系统 → logs/ 里什么都没有，
-#        只在控制台留一段栈）。目录由 csproj 的 EnsureConfigurationLocalInOutput /
-#        EnsureConfigurationLocalInPublish 两个 MakeDir 目标保证，别删。
+# 与 dev-up.sh 的分工：
+#   dev-up.sh         一键（起库 → 构建 → **后台**起后端 → schema 纠偏 → 守卫），适合从零拉起。
+#   run-backend-pg.sh **前台**运行后端，适合要持续盯日志、或被上层进程托管（如后台任务）时用。
 #
 # ─────────────────────────────────────────────────────────────────────────────
-# 关于「切回 SQLite」—— 常见的说法是错的，这里说明正确做法
+# 数据库配置怎么定的（只有一处，改之前先看懂）
 #
-#   ❌ 只把 ConfigurationLocal/LocalOverride.json 从**源目录**移走：
-#        不重新 build → bin 里的旧副本仍在 → 还是连 PG（你以为切了，其实没切）；
-#        重新 build → 目录里的 json 没了，若目录也随之消失 → **下次启动直接崩**。
+#   Admin.NET.Application/Configuration/Database.json   ← 唯一来源（DbType / ConnectionString）
+#     ↓ Admin.NET.Application.csproj 把 Configuration\**\* 复制到输出目录
+#   bin/Debug/net8.0/Configuration/*.json   ← Furion **真正读的是这里**
 #
-#   ✅ 本脚本 DB=sqlite 的做法：**只临时改名 bin 里的那一份**（Furion 真正读的那份），
-#        源文件不动、目录不动，进程退出时自动还原。
-#        这样既真的切过去了，又不会踩「目录消失 → 崩溃」的坑。
+#   ★ 两个必须知道的事实：
+#     1) **Furion 读的是输出目录（bin/）里的副本**，不是仓库里的源文件。
+#        改了源文件而不重新 build，运行时用的还是旧副本 —— 现象是「改了没生效」。
+#     2) 配置写错时后端**不报错**，只是安静地连上另一个库，
+#        业务代码于是在错误的数据上跑，看起来像「功能没实现」。
+#        所以本脚本启动前**断言** bin/ 下确有这份配置；
+#        「真的连上了 PostgreSQL」的断言在 dev-up.sh（它读启动日志的「初始化数据库」那一行）。
 #
-#   另外注意：SQLite 只是应急回落，**正式开发请用 PG** ——
-#   本项目的额度预占用了 `FOR UPDATE` 行锁，SQLite 没有这个语义，并发行为不可比。
+#   ★ 本项目只有 PostgreSQL 一种形态，配置里不保留任何回落项。
 # ─────────────────────────────────────────────────────────────────────────────
 
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENTRY_DIR="$REPO/Admin.NET/Admin.NET.Web.Entry"
+CFG_SRC="$REPO/Admin.NET/Admin.NET.Application/Configuration"
 cd "$ENTRY_DIR"
 
 DOTNET="${DOTNET:-/usr/local/share/dotnet/dotnet}"
+PY="${PY:-$HOME/.workbuddy-ai/binaries/python/envs/default/bin/python}"
 export ASPNETCORE_ENVIRONMENT="${ASPNETCORE_ENVIRONMENT:-Development}"
 
 OUT_DIR="bin/Debug/net8.0"
-OVERRIDE="$OUT_DIR/ConfigurationLocal/LocalOverride.json"
-RESTORE_NEEDED=0
-
-restore_override() {
-  if [[ "$RESTORE_NEEDED" == "1" && -f "$OVERRIDE.disabled" ]]; then
-    mv -f "$OVERRIDE.disabled" "$OVERRIDE"
-    echo "[run-backend] 已还原 $OVERRIDE"
-  fi
-}
-trap restore_override EXIT
+CFG_OUT="$OUT_DIR/Configuration"
 
 # ── 构建 ────────────────────────────────────────────────────────────────────
 # 默认每次都构建。原因：`dotnet run --no-build` 跑的是 bin/ 里的**已有**二进制，
@@ -73,26 +55,24 @@ else
   echo "[run-backend] ⚠️ SKIP_BUILD=1：跑的是 bin/ 里的旧二进制，改过代码就别这么用"
 fi
 
-# ── 数据库选择 ──────────────────────────────────────────────────────────────
-if [[ "${DB:-pg}" == "sqlite" ]]; then
-  if [[ ! -d "$OUT_DIR/ConfigurationLocal" ]]; then
-    echo "[run-backend] ✗ 缺少 $OUT_DIR/ConfigurationLocal（应由构建生成；先执行一次不带 SKIP_BUILD 的构建）" >&2
-    exit 1
-  fi
-  if [[ -f "$OVERRIDE" ]]; then
-    mv -f "$OVERRIDE" "$OVERRIDE.disabled"
-    RESTORE_NEEDED=1
-    echo "[run-backend] ⚠️ DB=sqlite：已临时停用 PG 覆盖 → 本次连 SQLite（仅应急；并发语义与 PG 不同）"
-  fi
-else
-  if [[ ! -f "$OVERRIDE" ]]; then
-    echo "[run-backend] ⚠️ 未找到 $OVERRIDE" >&2
-    echo "[run-backend]    → 本次会**静默回落到 SQLite**（启动日志里会出现「初始化数据库 Sqlite」）。" >&2
-    echo "[run-backend]    想连 PG：确认 $ENTRY_DIR/ConfigurationLocal/LocalOverride.json 存在并重新构建。" >&2
-  else
-    echo "[run-backend] 数据库覆盖：$OVERRIDE → PostgreSQL"
-  fi
+# ── 数据库配置检查（fail-closed，防止静默连错库）────────────────────────────
+if [[ ! -f "$CFG_SRC/Database.json" ]]; then
+  echo "[run-backend] ✗ 缺少 $CFG_SRC/Database.json" >&2
+  echo "[run-backend]   它是连 PG 的唯一来源（DbType / ConnectionString）。" >&2
+  exit 1
+fi
+if [[ ! -f "$CFG_OUT/Database.json" ]]; then
+  echo "[run-backend] ✗ $CFG_OUT/Database.json 不存在 —— 构建没有把它复制到输出目录。" >&2
+  echo "[run-backend]   检查 Admin.NET.Application.csproj 里 Configuration\\**\\* 的 CopyToOutputDirectory。" >&2
+  exit 1
+fi
+echo "[run-backend] 数据库配置：$CFG_SRC/Database.json（已复制到 $CFG_OUT/）"
+# 顺手把「即将连的库」打出来 —— 脚本本身不决定库，只是让操作者看得见，
+# 免得对着一个远程库调半天却以为是本地容器。
+if [[ -x "$PY" ]]; then
+  echo "[run-backend] 目标库：$("$PY" "$REPO/scripts/db_target.py")"
 fi
 
 # ── 启动 ────────────────────────────────────────────────────────────────────
+# exec：让 pid 就是宿主本身（而不是 dotnet run 的父进程），上层进程托管时杀得干净。
 exec "$DOTNET" run --no-build --urls "${URLS:-http://localhost:5005}"

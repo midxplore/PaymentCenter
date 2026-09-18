@@ -63,7 +63,7 @@ const GATE_PREFIXES = [
 
 /** 允许带债的路径。每条都要写清「为什么不在这里修」。 */
 const KNOWN_DEBT = [
-	{ prefix: 'src/components/', why: '框架自带组件（116 条里 113 条是 dragVerify 死代码，见下）' },
+	{ prefix: 'src/components/', why: '框架自带组件（116 条里 113 条集中在 dragVerify/ 的 3 个未被引用文件，见下）' },
 	{ prefix: 'src/layout/', why: '框架自带布局' },
 	{ prefix: 'src/utils/', why: '框架自带工具' },
 	{ prefix: 'src/hooks/', why: '框架自带 hooks' },
@@ -75,12 +75,13 @@ const KNOWN_DEBT = [
 ];
 
 // ★ src/components/ 那 116 条里有 113 条集中在 src/components/dragVerify/ 的
-//   dragVerify.vue / dragVerifyImg.vue / dragVerifyImgChip.vue 三个文件上。
-//   这三个文件在**本项目里没有任何引用**（全项目只有 login/component/account.vue
-//   用了 dragVerifyImgRotate.vue，那个文件已经修到 0 错），属于上游框架的死代码。
-//   没有删掉它们，是因为本仓库**没有 git**（`git status` 报 not a repository），
-//   删除不可回滚 —— 需要用户显式确认后再动。详见 .workbuddy-ai/memory 当日日志。
-//   若确认删除，这一桶会直接从 116 掉到 3 条（剩 jsonEditor 的 3 条，同样零引用）。
+//   dragVerify.vue (30) / dragVerifyImg.vue (32) / dragVerifyImgChip.vue (51) 三个文件上。
+//   ★★ 只有**这三个**是死代码 —— 同目录的 dragVerifyImgRotate.vue 被
+//      views/login/component/account.vue 引用，**不能删**（那个文件已修到 0 错）。
+//      一句话概括成「dragVerify 是死代码」会诱导人删掉整个目录、把登录页弄坏。
+//   这三个文件在**本项目里没有任何引用**，属于上游框架的死代码。
+//   没有删掉它们，是因为删除需要用户显式确认（删掉后这一桶从 116 掉到 3 条，
+//   剩 jsonEditor 的 3 条，同样零引用）。详见 .workbuddy-ai/memory 当日日志。
 //
 // ★ 已知**修不掉**的一条（不是没修，是修了更差）：
 //   `src/components/scEcharts/index.vue` 的 `<script>` 没有 `lang="ts"`，

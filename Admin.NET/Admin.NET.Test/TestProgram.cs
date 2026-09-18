@@ -28,6 +28,21 @@ public class TestProgram : TestStartup
 {
     public TestProgram(IMessageSink messageSink) : base(messageSink)
     {
+        // ★ 必须在 Serve.RunNative() **之前** 指定环境，让测试宿主与后端跑在同一环境上。
+        //
+        // 机制：Serve.RunNative() 自己不设 ASPNETCORE_ENVIRONMENT，.NET 在未设置时回落到 "Production"。
+        // 而 App.Development.json / HttpRemote.Development.json 等只在 Development 下叠加 ——
+        // 例如 JobSchedule.Enabled 就只在 Development 里为 true。
+        // 环境不一致时测试与后端跑在两套配置上，症状是「本地能跑、测试却失败」，且不会报配置错误。
+        //
+        // 环境名与后端一致（Web.Entry/Properties/launchSettings.json = Development）。
+        // 已显式设过环境变量的场景（CI / 临时指向别的库）不覆盖。
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")) &&
+            string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT")))
+        {
+            Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Development");
+        }
+
         Serve.RunNative();
     }
 }

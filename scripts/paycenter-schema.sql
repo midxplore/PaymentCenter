@@ -335,6 +335,27 @@ ALTER TABLE pay_audit_log ADD COLUMN IF NOT EXISTS clientkey varchar(128);
 --   默认 1 = StatusEnum.Enable，与实体默认值一致；老库既有凭证全部视为启用（保持现状，不误伤）。
 ALTER TABLE sysopenaccess ADD COLUMN IF NOT EXISTS status integer NOT NULL DEFAULT 1;
 
+-- ★ 上面那条在**列已存在**时是空操作，而 SqlSugar CodeFirst 建这张表时**不带 DB 默认值**
+--   （实体里 `public virtual StatusEnum Status { get; set; } = StatusEnum.Enable;` 是 **C# 字段
+--   初始化器**，只在应用内 new 对象时生效，不会变成列默认值）。
+--   于是存在一条静默路径：**全新库 → CodeFirst 先建出无默认值的 status → 本语句空操作** →
+--   列永远没有默认值，而 `pay_schema_guard.py` 的断言「status 默认 1」就会失败。
+--   本地容器之所以一直是好的，只是因为当初那列是由**上面这条语句**新增的（而不是 CodeFirst）。
+--   2026-09-18 在一台全新库上实测到，故补一个「先查后改」的 DO 块。
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+         WHERE table_schema  = 'public'
+           AND table_name    = 'sysopenaccess'
+           AND column_name   = 'status'
+           AND column_default IS NULL
+    ) THEN
+        ALTER TABLE sysopenaccess ALTER COLUMN status SET DEFAULT 1;
+        RAISE NOTICE '列默认值纠偏：sysopenaccess.status → DEFAULT 1';
+    END IF;
+END $$;
+
 
 -- --------------------------------------------------------------------------------------------
 -- §4 由启动种子维护的对象（**不要**在此文件里重复插入）

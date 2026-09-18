@@ -51,7 +51,6 @@ node_modules/
 /App/pnpm-lock.yaml
 
 # ── PaymentCenter 本地/敏感项（git init 前新增）────────────────────────────
-/Admin.NET/Admin.NET.Web.Entry/ConfigurationLocal/
 /.workbuddy-ai/
 /.omo/
 /Web/.npm-cache/

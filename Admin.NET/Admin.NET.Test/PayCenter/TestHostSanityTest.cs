@@ -10,10 +10,22 @@ using Xunit.Abstractions;
 namespace Admin.NET.Test.PayCenter;
 
 /// <summary>
-/// 测试宿主自检：确认 <see cref="TestProgram"/> 的 <c>Serve.RunNative()</c> 真的把应用启动起来了
+/// 测试宿主自检：确认 <see cref="TestProgram"/> 的 <c>Serve.RunNative()</c> 真的把应用启动起来了，
+/// 并且**连的是配置里那个库**
 /// </summary>
 /// <remarks>
+/// <para>
 /// 走数据库的用例都依赖宿主已注册 SqlSugar 等服务。若本类失败，先修宿主启动，再看其它用例的失败。
+/// </para>
+/// <para>
+/// ★★ 本类的断言刻意「重」。只断言「服务非空」是**不够**的：宿主即便连到一个**空库**，
+/// <c>App.GetService&lt;ISqlSugarClient&gt;()</c> 依然**非空**，于是「断言非空」会安静地通过 ——
+/// 假绿。真实缺陷因此被掩盖了整整一轮。
+/// </para>
+/// <para>
+/// 所以这里改为断言**可观察事实**：库类型不是 Sqlite、库里确实有表、且 <c>pay_*</c> 业务表存在。
+/// 这三条只要宿主连错库或 CodeFirst 没跑，就必然失败。
+/// </para>
 /// </remarks>
 public class TestHostSanityTest
 {
@@ -24,26 +36,74 @@ public class TestHostSanityTest
     [Fact]
     public void 宿主已启动_应能解析出应用配置()
     {
-        _output.WriteLine($"App.RootServices 非空：{App.RootServices != null}");
-        _output.WriteLine($"Configuration 非空：{App.Configuration != null}");
+        Assert.NotNull(App.Configuration);
 
-        var dbType = App.Configuration?["DbConnection:ConnectionConfigs:0:DbType"];
+        _output.WriteLine($"宿主环境：{App.HostEnvironment?.EnvironmentName ?? "<未读到>"}");
+        _output.WriteLine($"ASPNETCORE_ENVIRONMENT：{Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "<未设置>"}");
+
+        // 宿主真的起来了吗？启动失败时这项是 False。
+        Assert.NotNull(App.RootServices);
+
+        // ★ ConfigurationScanDirectories 是**数组**：.NET 配置把它存成
+        //   `ConfigurationScanDirectories:0` / `:1`，用父键名索引（App.Configuration["ConfigurationScanDirectories"]）
+        //   恒为 null。曾因此把「读法不对」误判成「没读到」，白查了一轮。必须按节读子项。
+        var scanDirs = App.Configuration.GetSection("ConfigurationScanDirectories")
+            .GetChildren()
+            .Select(u => u.Value)
+            .Where(u => u != null)
+            .ToList();
+
+        _output.WriteLine($"ConfigurationScanDirectories：[{string.Join(", ", scanDirs.Select(d => d.Length == 0 ? "<空串=内容根>" : d))}]");
+
+        Assert.NotEmpty(scanDirs);
+        Assert.Contains("Configuration", scanDirs);
+
+        var dbType = App.Configuration["DbConnection:ConnectionConfigs:0:DbType"];
         _output.WriteLine($"配置中的 DbType：{dbType ?? "<未读到>"}");
-
-        var scanDirs = App.Configuration?["ConfigurationScanDirectories"];
-        _output.WriteLine($"ConfigurationScanDirectories：{scanDirs ?? "<未读到>"}");
 
         Assert.False(string.IsNullOrWhiteSpace(dbType), "未从配置读到 DbConnection:ConnectionConfigs:0:DbType");
     }
 
+    /// <summary>
+    /// 核心断言：宿主解析出的 SqlSugar 客户端必须**真的能读到一个建好的库**。
+    /// </summary>
+    /// <remarks>
+    /// 这里刻意不断言「服务非空」——那正是上一轮的假绿来源。改为连库读表：
+    /// 连错库、CodeFirst 没跑、业务表没建，都会在此失败。
+    /// </remarks>
     [Fact]
-    public void 宿主已启动_应能解析出SqlSugar客户端()
+    public void 宿主已启动_数据库必须真实可用()
     {
         var db = App.GetService<ISqlSugarClient>();
-
-        _output.WriteLine($"ISqlSugarClient：{(db == null ? "<未注册>" : db.CurrentConnectionConfig.DbType.ToString())}");
-
         Assert.NotNull(db);
+
+        var dbType = db.CurrentConnectionConfig.DbType;
+        _output.WriteLine($"ISqlSugarClient.DbType：{dbType}");
+
+        // 连接串可能含口令，打印前必须脱敏（沿用项目约定：密钥不出现在日志里）。
+        var conn = db.CurrentConnectionConfig.ConnectionString ?? string.Empty;
+        var masked = System.Text.RegularExpressions.Regex.Replace(
+            conn, @"(?i)(PASSWORD|PWD)\s*=\s*[^;]*", "$1=***");
+        _output.WriteLine($"连接串（脱敏）：{masked}");
+
+        // ★ 本项目只有 PG：DbType 不是 PG 说明连的不是本项目的库。
+        Assert.NotEqual(DbType.Sqlite, dbType);
+
+        // ★★ 真断言：连上库并列出表。空库 / 连错库 / 表没建都会在这里炸。
+        var tables = db.DbMaintenance.GetTableInfoList(false);
+        _output.WriteLine($"库中表数量：{tables.Count}");
+
+        Assert.True(tables.Count > 0, $"已连上 {dbType}，但库里一张表都没有 —— CodeFirst 没跑，或连错了库。");
+
+        var names = tables
+            .Select(u => u.Name?.ToLowerInvariant() ?? string.Empty)
+            .ToList();
+
+        var payTables = names.Where(u => u.StartsWith("pay_")).ToList();
+        _output.WriteLine($"pay_* 表数量：{payTables.Count}");
+
+        // pay_account 是收款账号分配系统的核心表；它不存在说明连的根本不是本项目的库。
+        Assert.Contains("pay_account", names);
     }
 
     [Fact]

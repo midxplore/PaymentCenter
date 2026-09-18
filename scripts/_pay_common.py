@@ -12,13 +12,18 @@
   * 数据库：``pg`` / ``pg_query`` / ``pg_exec``（直连 PG，列名一律小写）
   * 断言：``assert_true`` / ``section`` / ``report``
 
-环境变量（都有默认值，本机开箱即用）：
-  PAY_BASE       后端地址，默认 http://localhost:5005
-  PAY_PG_HOST    PG 主机，默认 127.0.0.1
-  PAY_PG_PORT    PG 端口，默认 55432（OrbStack 容器映射）
-  PAY_PG_USER    PG 用户，默认 payment
-  PAY_PG_DB      PG 库名，默认 paymentcenter
-  PAY_NODE       node 可执行文件（SM2 加密要用）
+环境变量：
+  PAY_BASE          后端地址，默认 http://localhost:5005
+  PAY_PG_HOST       PG 主机   ┐
+  PAY_PG_PORT       PG 端口   │ 不设时从 Configuration/Database.json 解析
+  PAY_PG_USER       PG 用户   │ （见 scripts/db_target.py）；设了则显式覆盖
+  PAY_PG_DB         PG 库名   │
+  PAY_PG_PASSWORD   PG 口令   ┘
+  PAY_ENV           配置环境名，默认 Development
+  PAY_NODE          node 可执行文件（SM2 加密要用）
+
+★ 数据库目标**不在这里写死**：回归脚本必须和「后端实际连的库」是同一个，
+  否则会安静地校验另一个库、给出假的「全绿」。解析逻辑唯一实现见 db_target.py。
 """
 
 import base64
@@ -38,11 +43,22 @@ import uuid
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# ★ 数据库目标由 scripts/db_target.py 从配置解析 —— 与后端实际连的库**同一个来源**。
+#   这里只负责「取出来放成模块常量」，不承担任何解析/默认值逻辑。
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+import db_target  # noqa: E402
+
+_DB = db_target.resolve()
+
 BASE = os.environ.get("PAY_BASE", "http://localhost:5005")
-PG_HOST = os.environ.get("PAY_PG_HOST", "127.0.0.1")
-PG_PORT = int(os.environ.get("PAY_PG_PORT", "55432"))
-PG_USER = os.environ.get("PAY_PG_USER", "payment")
-PG_DB = os.environ.get("PAY_PG_DB", "paymentcenter")
+PG_HOST = _DB["host"]
+PG_PORT = _DB["port"]
+PG_USER = _DB["user"]
+PG_DB = _DB["db"]
+PG_PASSWORD = _DB["password"]
+PG_DESC = db_target.describe(_DB)
 
 NODE = os.environ.get("PAY_NODE", "/Users/ipan/.workbuddy-ai/binaries/node/versions/22.22.2-2/bin/node")
 
@@ -175,14 +191,19 @@ def admin_login(account=None, password=None):
 # ★ PG 把未加引号的标识符折叠成小写：列名是 orderno / accountid / totalquota，
 #   不是 OrderNo / AccountId / TotalQuota。直连 SQL 一律用小写。
 #
-# ★ 这里刻意**不复用后端连接串**（Configuration/Database*.json 是受保护文件，读会被沙箱拦），
-#   直接用容器映射出来的 127.0.0.1:55432（trust 认证）。
+# ★ 连接参数来自 db_target（= 后端配置），**不再硬编码本地容器**。
+#   本地容器用 trust 认证（无口令），远程库要口令 —— 所以 password 为空时不传该参数。
+#   旧注释曾说「Configuration/Database*.json 是受保护文件、读会被沙箱拦」：
+#   实测**不成立**（`wc -c` 与 python 读取均正常返回），那条说法已删除。
 
 
 def pg():
     """新建一个 autocommit 连接（调用方负责 close）。"""
     import psycopg2  # 装在 ~/.workbuddy-ai/binaries/python/envs/default
-    conn = psycopg2.connect(host=PG_HOST, port=PG_PORT, user=PG_USER, dbname=PG_DB)
+    kwargs = dict(host=PG_HOST, port=PG_PORT, user=PG_USER, dbname=PG_DB)
+    if PG_PASSWORD:
+        kwargs["password"] = PG_PASSWORD
+    conn = psycopg2.connect(**kwargs)
     conn.autocommit = True
     return conn
 

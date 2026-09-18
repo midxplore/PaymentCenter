@@ -122,12 +122,16 @@ def sign_call(method, url, body=None, ak=AK, sk=SK):
 
 
 def psql(sql: str):
-    """本地 dev 库直连（仅用于清理不可篡改的流水表，业务上没有删除接口）。
+    """直连后端所用的库（仅用于清理不可篡改的流水表，业务上没有删除接口）。
 
     ⚠️ 早期实现是 `docker exec ... psql`，依赖 docker 在 PATH 上——
     清理阶段一旦拿不到 docker 就静默失败（脚本还在跑，只是脏数据没清掉），
     下次跑时残留账号会抢走「最佳适配」，让断言凭空失败。
-    现在改走共用底座的 psycopg2 直连（127.0.0.1:55432），不再依赖 docker。
+    现在改走共用底座的 psycopg2 直连，不再依赖 docker。
+
+    ★ 连哪个库由 scripts/db_target.py 从 Configuration 解析 —— 与后端**同源**。
+      别再写死 127.0.0.1:55432：后端一旦切到远程开发库，清理就会打在另一个库上，
+      于是「清干净了」但脏数据还在（或反之，误删别的库）。
 
     返回值保持与 ``subprocess.run`` 同形状（returncode / stdout / stderr），
     调用方无需改动；支持分号分隔的多条语句。

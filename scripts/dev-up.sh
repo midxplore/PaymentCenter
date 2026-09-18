@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
-# 一条命令把本地开发环境拉起来：PostgreSQL 容器 → 构建 → 后端 → schema 纠偏 → 守卫校验
+# 一条命令把本地开发环境拉起来：解析目标库 →（必要时起容器）→ 构建 → 后端 → schema 纠偏 → 守卫校验
 #
 # 用法：
 #   scripts/dev-up.sh                 # 默认端口 5005
 #   PORT=5006 scripts/dev-up.sh
+#   READY_MAX=1800 scripts/dev-up.sh  # 放宽就绪等待（首次对远端空库建表很慢）
 #   scripts/dev-up.sh --no-guard      # 跳过 schema 守卫（省几秒）
 #
 # 停止：scripts/dev-down.sh
 # 日志：Admin.NET/Admin.NET.Web.Entry/logs/dev-backend.log
+#
+# 连哪个库？**不看本脚本** —— 由 Admin.NET/Admin.NET.Application/Configuration/
+# Database.json 决定，本脚本用 scripts/db_target.py 读它（唯一实现），
+# 并让 schema 纠偏 / 守卫打在**同一个库**上。临时指向别处用 PAY_PG_HOST/PORT/USER/DB。
 #
 # 前端另开一个终端：
 #   cd Web && env -u NODE_OPTIONS npm run dev     # http://localhost:8888
@@ -27,10 +32,17 @@ PID_FILE="$REPO/.dev-backend.pid"
 DOTNET="${DOTNET:-/usr/local/share/dotnet/dotnet}"
 PY="${PY:-$HOME/.workbuddy-ai/binaries/python/envs/default/bin/python}"
 PORT="${PORT:-5005}"
+RUN_GUARD=1
+# 就绪等待上限（秒）。CodeFirst 启动时会**逐张**处理全部表（不只是新建），
+# 远端库单张实测 3~25s（延迟波动很大），45 张最坏可到 15 分钟以上。
+# 循环一旦探到端口就立刻退出，所以把上限放宽**没有代价**；宁可等，也别误报失败。
+# 可用 READY_MAX 覆盖。
+READY_MAX="${READY_MAX:-1800}"
+
+# 本地容器的**自用**凭据 —— 只用于容器健康检查 / 启停，与「后端连哪个库」无关。
 PG_CONTAINER="paymentcenter-pg"
 DB_NAME="paymentcenter"
 DB_USER="payment"
-RUN_GUARD=1
 
 for arg in "$@"; do
   case "$arg" in
@@ -45,37 +57,89 @@ export PATH="/usr/local/bin:$PATH"
 step() { printf '\n\033[1m==> %s\033[0m\n' "$1"; }
 die()  { printf '\033[31m✗ %s\033[0m\n' "$1" >&2; exit 1; }
 
+# 把连接串里的口令打码再输出 —— 后端日志那行「初始化数据库 …」是**明文带口令**的，
+# 直接 echo 会把口令写进终端记录。
+mask_secret() {
+  "$PY" -c 'import re,sys; sys.stdout.write(re.sub(r"(?i)(password|pwd)\s*=\s*[^;]*", r"\1=***", sys.stdin.read()))'
+}
+
+# 打印日志尾部若干行（同样打码）。
+# ★ 不用 `tail`：本沙箱对后端日志**禁用 tail**（`Operation not permitted`），
+#   而 python 读同一个文件正常 —— 失败路径若依赖 tail，报错时会什么都不显示。
+show_log_tail() {
+  "$PY" - "$1" "${2:-30}" <<'PYEOF'
+import re, sys
+path, n = sys.argv[1], int(sys.argv[2])
+try:
+    lines = open(path, encoding="utf-8", errors="replace").readlines()[-n:]
+except OSError as exc:
+    sys.stderr.write("（读不到日志：%s）\n" % exc)
+    sys.exit(0)
+txt = "".join(lines)
+sys.stderr.write(re.sub(r"(?i)(password|pwd)\s*=\s*[^;]*", r"\1=***", txt))
+PYEOF
+}
+
+# ── 解析「后端实际连的库」──────────────────────────────────────────────────
+# ★ 唯一实现见 scripts/db_target.py；这里只消费它的输出。
+#   过去本脚本把库写死成 127.0.0.1:55432/paymentcenter —— 一旦后端切到别的库，
+#   第 5/6 步（schema 纠偏 + 守卫）就会安静地校验**另一个库**：输出全绿，
+#   但后端用的库根本没被验过。这是本项目最忌讳的静默失效。
+[[ -x "$PY" ]] || die "找不到 python venv：$PY（解析数据库配置要用它，也只有它有 psycopg2）"
+DB_ENV_OUT="$("$PY" "$REPO/scripts/db_target.py" --shell --require-pg)" \
+  || die "无法从 Configuration 解析数据库目标，或 DbType 不是 PostgreSQL（scripts/db_target.py）"
+eval "$DB_ENV_OUT"
+# ★ 必须 export：`eval` 只设了 **shell 变量**，不会进环境。
+#   第 5 步的 python 与第 6 步的守卫读的都是 `os.environ` —— 不导出就会 KeyError。
+export PAY_PG_HOST PAY_PG_PORT PAY_PG_USER PAY_PG_DB PAY_PG_PASSWORD
+
 # ── 0. 前置检查 ──────────────────────────────────────────────────────────────
 step "0/6 前置检查"
 [[ -x "$DOTNET" ]] || die "找不到 dotnet：$DOTNET（本机不在 PATH 上，需绝对路径）"
-command -v docker >/dev/null || die "找不到 docker（OrbStack 装了但可能不在 PATH）"
 echo "dotnet : $($DOTNET --version)"
-echo "docker : $(docker --version)"
+echo "目标库 : $PAY_DB_DESC"
+if [[ "$PAY_PG_LOCAL" == "1" ]]; then
+  command -v docker >/dev/null || die "找不到 docker（OrbStack 装了但可能不在 PATH）"
+  echo "docker : $(docker --version)"
+else
+  echo "docker : （目标库不在本机，本次不需要 docker）"
+fi
 
 # ── 1. 数据库 ────────────────────────────────────────────────────────────────
-step "1/6 启动 PostgreSQL（$PG_CONTAINER）"
-if [[ "$(docker inspect -f '{{.State.Running}}' "$PG_CONTAINER" 2>/dev/null || echo false)" != "true" ]]; then
-  docker compose -f "$REPO/docker/docker-compose.pg.yml" up -d
+step "1/6 数据库"
+if [[ "$PAY_PG_LOCAL" != "1" ]]; then
+  # 后端连的是非本机地址 → 本地容器与它无关：不启动、不等待。
+  # （容器只服务于 127.0.0.1:55432 这个目标。）
+  echo "目标库不在本机，跳过本地容器 $PG_CONTAINER"
 else
-  echo "容器已在运行"
-fi
-echo -n "等待就绪"
-for sec in $(seq 1 40); do
-  if docker exec "$PG_CONTAINER" pg_isready -U "$DB_USER" -d "$DB_NAME" >/dev/null 2>&1; then
-    echo " —— 就绪"; break
+  if [[ "$(docker inspect -f '{{.State.Running}}' "$PG_CONTAINER" 2>/dev/null || echo false)" != "true" ]]; then
+    docker compose -f "$REPO/docker/docker-compose.pg.yml" up -d
+  else
+    echo "容器已在运行"
   fi
-  echo -n "."; sleep 1
-done
-docker exec "$PG_CONTAINER" pg_isready -U "$DB_USER" -d "$DB_NAME" >/dev/null 2>&1 \
-  || die "PostgreSQL 未就绪（看 docker logs $PG_CONTAINER）"
+  echo -n "等待就绪"
+  for sec in $(seq 1 40); do
+    if docker exec "$PG_CONTAINER" pg_isready -U "$DB_USER" -d "$DB_NAME" >/dev/null 2>&1; then
+      echo " —— 就绪"; break
+    fi
+    echo -n "."; sleep 1
+  done
+  docker exec "$PG_CONTAINER" pg_isready -U "$DB_USER" -d "$DB_NAME" >/dev/null 2>&1 \
+    || die "PostgreSQL 未就绪（看 docker logs $PG_CONTAINER）"
+fi
 
-# ── 2. 数据库覆盖检查（★ 这一步是「静默回落」的唯一防线）────────────────────
-step "2/6 确认数据库覆盖生效"
-OVERRIDE="$ENTRY_DIR/bin/Debug/net8.0/ConfigurationLocal/LocalOverride.json"
-[[ -d "$ENTRY_DIR/bin/Debug/net8.0/ConfigurationLocal" ]] \
-  || echo "提示：bin 下的 ConfigurationLocal 目录还不存在，构建后会自动创建（csproj 的 MakeDir 目标）"
-[[ -f "$ENTRY_DIR/ConfigurationLocal/LocalOverride.json" ]] \
-  || die "缺少 $ENTRY_DIR/ConfigurationLocal/LocalOverride.json —— 缺了它后端会**静默回落到 SQLite**，不是连 PG"
+# ── 2. 数据库配置检查（★ 这是「静默连错库」的第一道防线）────────────────────
+# 配置只有一处来源：Admin.NET.Application/Configuration/Database.json（只有 PostgreSQL）。
+step "2/6 确认数据库配置来源"
+CFG_SRC="$REPO/Admin.NET/Admin.NET.Application/Configuration"
+CFG_OUT="$ENTRY_DIR/bin/Debug/net8.0/Configuration"
+[[ -f "$CFG_SRC/Database.json" ]] \
+  || die "缺少 $CFG_SRC/Database.json —— 它是连库的唯一来源（DbType/ConnectionString）"
+# db_target.py 的人类可读输出：来源文件 + 「bin/ 副本是否与源一致」。
+# ★ Furion 读的是 bin/ 里的副本：源文件改了没重新 build = 改了不生效，且**不报错**。
+"$PY" "$REPO/scripts/db_target.py"
+echo "（构建时由 Admin.NET.Application.csproj 把 Configuration\\**\\* 复制到 bin/；"
+echo "  第二道防线是启动后的日志断言）"
 
 # ── 3. 构建 ──────────────────────────────────────────────────────────────────
 step "3/6 构建解决方案"
@@ -94,8 +158,7 @@ mkdir -p "$(dirname "$LOG_FILE")"
 #   原因：`dotnet run` 会再派生一个子进程跑真正的宿主，于是
 #     (a) nohup 只能保住 `dotnet run` 本身，脚本一退宿主就被带走；
 #     (b) pid 文件里记的是 `dotnet run` 的 pid，dev-down.sh 杀不干净。
-#   直接跑 apphost 则是**单进程**，pid 就是宿主本身，cwd 也确定（= 项目目录，
-#   决定 logs/ 与 ./Admin.NET.db 落在哪）。
+#   直接跑 apphost 则是**单进程**，pid 就是宿主本身，cwd 也确定（= 项目目录，决定 logs/ 落在哪）。
 APP_BIN="$ENTRY_DIR/bin/Debug/net8.0/Admin.NET.Web.Entry"
 [[ -x "$APP_BIN" ]] || die "找不到可执行文件 $APP_BIN（构建没成功？）"
 
@@ -125,35 +188,76 @@ port_listening() {
   fi
 }
 
-echo -n "等待端口就绪"
+echo "等待端口就绪（上限 ${READY_MAX}s；首次对空库跑 CodeFirst 要建 45 张表，可能要几分钟）"
 READY=0
 # ★ 循环变量**不要用 `_`**：`$_` 是 bash 的特殊变量（上一条命令的最后一个参数），
 #   而 `port_listening` 是函数调用 → 会把 `$_` 覆盖成函数名，
 #   于是输出变成「已就绪（第 port_listening 秒）」。实测踩过。
-for sec in $(seq 1 90); do
+for sec in $(seq 1 "$READY_MAX"); do
   if port_listening; then echo " —— 已就绪（第 ${sec} 秒）"; READY=1; break; fi
+  # ★ 进度可见：CodeFirst 是逐张建表，远端库每张要几秒到二十几秒。
+  #   不报进度时，「在建表」和「卡死」在终端上长得一模一样。
+  #   用「数行数」而不是「取最后一行」：本沙箱对日志**禁用 tail**，而 grep 正常。
+  if (( sec % 15 == 0 )); then
+    BUILT="$(grep -ac '初始化表 ' "$LOG_FILE" 2>/dev/null || true)"
+    printf '\n  …等待中 %ss，已建表 %s/45\n' "$sec" "${BUILT:-0}"
+  fi
   echo -n "."; sleep 1
 done
 if [[ "$READY" != "1" ]]; then
   echo
-  echo "✗ 后端未在 90s 内就绪。最后 30 行日志：" >&2
-  tail -30 "$LOG_FILE" >&2 || true
+  echo "✗ 后端未在 ${READY_MAX}s 内就绪。最后 30 行日志（口令已打码）：" >&2
+  show_log_tail "$LOG_FILE" 30
   die "后端未就绪（日志 $LOG_FILE）"
 fi
 
-# 数据库到底是哪个？启动日志里有一行「初始化数据库 xxx」—— 直接断言，不靠猜
-if grep -q "初始化数据库 Sqlite" "$LOG_FILE"; then
+# ★ 数据库到底是哪个？启动日志里有一行「初始化数据库 xxx」—— 直接断言，不靠猜。
+#   这是「静默回落」的第二道防线：配置写错时后端**不报错**，只是安静地连上另一个库，
+#   业务代码于是在错误的数据上跑（最坏情况是跑在空库上，看起来「功能没实现」）。
+#   宁可在这里拒绝继续，也不要让后续的 schema 纠偏与守卫在错误的库上「通过」。
+DB_LINE="$(grep -am1 '初始化数据库' "$LOG_FILE" || true)"
+DB_LINE_SAFE="$(printf '%s' "$DB_LINE" | mask_secret)"
+echo "数据库：${DB_LINE_SAFE:-（日志里没有「初始化数据库」这一行）}"
+if [[ "$DB_LINE" != *PostgreSQL* ]]; then
   echo
-  echo "⚠️  启动日志显示**连的是 SQLite**，不是 PostgreSQL ——"
-  echo "    说明覆盖文件没被读到。检查 $OVERRIDE 是否存在（需重新构建才会同步到 bin）。"
-  echo "    上游日志：$(grep -m1 '初始化数据库' "$LOG_FILE")"
+  echo "✗ 后端连的不是 PostgreSQL（日志：${DB_LINE_SAFE:-无}）" >&2
+  echo "  本项目只有 PG：额度预占依赖 FOR UPDATE 行锁，其它库没有该语义。" >&2
+  echo "  排查：" >&2
+  echo "    1) 改 $CFG_SRC/Database.json 的 DbType / ConnectionString" >&2
+  echo "    2) 改完**必须重新 build**（Furion 读的是 bin/ 里的副本，不是源文件）" >&2
+  die "数据库不是 PostgreSQL —— 拒绝继续"
 fi
 
 # ── 5. schema 纠偏（幂等；必须在 CodeFirst 建表之后）────────────────────────
 step "5/6 应用 schema 契约与列宽纠偏"
-docker exec -i "$PG_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -q \
-  <"$REPO/scripts/paycenter-schema.sql" || die "paycenter-schema.sql 执行失败"
-echo "paycenter-schema.sql 已应用（可反复执行）"
+echo "目标：$PAY_DB_DESC"
+# ★ 不再用 `docker exec psql`：那只能打在本地容器上，而目标库可能是远端 ——
+#   一旦不一致，纠偏就作用在「后端不用的那个库」上（静默失效）。
+#   改由 psycopg2 执行（该文件是纯 SQL、无 psql 元命令），本地/远端一视同仁。
+"$PY" - "$REPO/scripts/paycenter-schema.sql" <<'PYEOF' || die "paycenter-schema.sql 执行失败"
+import os
+import sys
+
+import psycopg2
+
+sql = open(sys.argv[1], encoding="utf-8").read()
+kwargs = dict(
+    host=os.environ["PAY_PG_HOST"],
+    port=int(os.environ["PAY_PG_PORT"]),
+    user=os.environ["PAY_PG_USER"],
+    dbname=os.environ["PAY_PG_DB"],
+)
+if os.environ.get("PAY_PG_PASSWORD"):
+    kwargs["password"] = os.environ["PAY_PG_PASSWORD"]
+conn = psycopg2.connect(**kwargs)
+conn.autocommit = True
+try:
+    with conn.cursor() as cur:
+        cur.execute(sql)
+finally:
+    conn.close()
+print("paycenter-schema.sql 已应用（幂等，可反复执行）")
+PYEOF
 
 # ── 6. 守卫校验 ──────────────────────────────────────────────────────────────
 if [[ "$RUN_GUARD" == "1" ]]; then
@@ -175,7 +279,7 @@ cat <<EOF
 ────────────────────────────────────────────
  后端      http://localhost:${PORT}
  Swagger   http://localhost:${PORT}/swagger/index.html
- 数据库    PostgreSQL 16 @ 127.0.0.1:55432/${DB_NAME}
+ 数据库    ${PAY_DB_DESC}
  日志      $LOG_FILE
 
  前端（另开终端）：
