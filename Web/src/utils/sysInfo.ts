@@ -1,7 +1,7 @@
 import { Local } from '/@/utils/storage';
 import { storeToRefs } from 'pinia';
 import { useThemeConfig } from '/@/stores/themeConfig';
-import logoImg from '/@/assets/logo.png';
+import logoImg from '/@/assets/logo.svg';
 import { updateIdleTimeout } from '/@/utils/idleTimeout';
 
 import { feature, getAPI } from '/@/utils/axios-utils';

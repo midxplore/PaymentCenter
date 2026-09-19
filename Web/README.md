@@ -1,67 +1,55 @@
-<div align="center">
-	<img src="https://i.hd-r.cn/6ce52e5724fae609444b5b48bdc4accb.png">
-	<p align="center">
-		<a href="https://v3.vuejs.org/" target="_blank">
-			<img src="https://img.shields.io/badge/vue.js-vue3.x-green" alt="vue">
-		</a>
-		<a href="https://element-plus.gitee.io/#/zh-CN/component/changelog" target="_blank">
-			<img src="https://img.shields.io/badge/element--plus-%3E1.0.0-blue" alt="element plus">
-		</a>
-		<a href="https://www.tslang.cn/" target="_blank">
-	    <img src="https://img.shields.io/badge/typescript-%3E4.0.0-blue" alt="typescript">
-	  </a>
-		<a href="https://vitejs.dev/" target="_blank">
-		  <img src="https://img.shields.io/badge/vite-%3E2.0.0-yellow" alt="vite">
-		</a>
-		<a href="https://gitee.com/lyt-top/vue-next-admin/blob/master/LICENSE" target="_blank">
-		  <img src="https://img.shields.io/badge/license-MIT-success" alt="license">
-		</a>
-	</p>
-	<p>&nbsp;</p>
-</div>
+# 支付中心 · 前端（`Web/`）
 
-#### 🌈 介绍
+收款账号分配系统的管理端。Vue 3 + TypeScript + Element Plus + Vite 7。
 
-基于 vue3.x + CompositionAPI setup 语法糖 + typescript + vite + element plus + vue-router-next + pinia 技术，适配手机、平板、pc 的后台开源免费模板，希望减少工作量，帮助大家实现快速开发。
+后端与业务契约见仓库根的 [`../AGENTS.md`](../AGENTS.md) 与 [`../doc/收款账号分配系统-技术设计方案.md`](../doc/收款账号分配系统-技术设计方案.md)；本文只讲前端怎么跑、怎么改。
 
-#### ⛱️ 线上预览
-
-- vue3.x 版本预览（vue-next-admin）<a href="https://lyt-top.gitee.io/vue-next-admin-preview/#/login" target="_blank">https://lyt-top.gitee.io/vue-next-admin-preview/#/login</a>
-- vue3.x + uni-app 商城 H5（vue-next-admin-shop）<a href="https://lyt-top.gitee.io/vue-next-admin-shop-preview" target="_blank">https://lyt-top.gitee.io/vue-next-admin-shop-preview</a>
-
-#### 💒 代码仓库
-
-- vue3.x 版本 <a href="https://gitee.com/lyt-top/vue-next-admin" target="_blank">https://gitee.com/lyt-top/vue-next-admin</a>
-
-#### 🚧 安装 cnpm、yarn
-
-- 复制代码(桌面 cmd 运行) `npm install -g pnpm --registry=https://registry.npmmirror.com`
-
-#### 🏭 环境支持
-
-| Edge      | Firefox      | Chrome      | Safari      |
-| --------- | ------------ | ----------- | ----------- |
-| Edge ≥ 88 | Firefox ≥ 78 | Chrome ≥ 87 | Safari ≥ 13 |
-
-> 由于 Vue3 不再支持 IE11，故而 ElementPlus 也不支持 IE11 及之前版本。
-
-#### ⚡ 使用说明
-
-建议使用 pnpm，因为 yarn 有时会报错。<a href="http://nodejs.cn/" target="_blank">node 版本 > 14.18+/16+</a>
-
-> Vite 不再支持 Node 12 / 13 / 15，因为上述版本已经进入了 EOL 阶段。现在你必须使用 Node 14.18+ / 16+ 版本。
+## 开发命令
 
 ```bash
-# 安装依赖
-pnpm install
-
-# 运行项目
-pnpm run dev
-
-# 打包发布
-pnpm run build
+env -u NODE_OPTIONS npm install          # 宿主注入的 NODE_OPTIONS 会让 vite 崩，必须剥掉
+env -u NODE_OPTIONS npm run dev          # http://localhost:8888（后端需在 :5005）
+env -u NODE_OPTIONS npm run typecheck    # ★ 类型检查闸门：本模块必须 0 错
+env -u NODE_OPTIONS npm run typecheck:all # 看全量明细（含已登记的框架/生成物债务）
+env -u NODE_OPTIONS npm run build        # 构建产物 dist/
+env -u NODE_OPTIONS npm run buildApi     # 由后端 swagger.json 重新生成 src/api-services/system/
 ```
 
-#### 📚 开发文档
+开发服务器把 `^/api`、`^/[Uu]pload`、`^/[Ss]se` 代理到 `VITE_API_URL`（默认 `http://localhost:5005`），见 `vite.config.ts`。
 
-- 查看开发文档：<a href="https://lyt-top.gitee.io/vue-next-admin-doc-preview" target="_blank">vue-next-admin-doc</a>
+## 目录
+
+| 路径 | 说明 |
+|---|---|
+| `src/views/paycenter/` | **本项目的业务页面**：收款账号 / 收款订单 / 异常到账 / 业务审计 |
+| `src/views/system/`、`login/`、`home/`、`about/` | 框架自带页面（品牌已改为本产品） |
+| `src/api-services/system/` | **Swagger 生成物，不要手改**；后端接口变了就跑 `npm run buildApi` |
+| `src/stores/themeConfig.ts` | 品牌默认值（运行时实际值以 `/api/sysTenant/sysInfo` 下发的租户配置为准） |
+| `script/check-types.mjs` | 类型检查闸门定义：`src/views/paycenter/` + `src/api-services/` + `src/views/system/openAccess/` 必须 0 错 |
+
+## 改完必须人工核对的三项（类型检查查不出来）
+
+1. 菜单 `component` 在 `import.meta.glob` 里**必须恰好命中 1 个**（0 → 空白页；**>1 → 白屏**）；
+2. `v-auth` 里的权限串必须能在后端菜单种子的 `permission` 里找到（没挂权限的接口 = 任何已登录用户都能调）；
+3. 调用的 API 方法名必须真实存在于 `src/api-services`；
+4. `el-date-picker` 一律带 `value-format="YYYY-MM-DD HH:mm:ss"` —— 传真正的 `Date` 会被序列化成带 `Z` 的 UTC，时间区间整体偏 8 小时。
+
+## 品牌（改之前先读）
+
+系统名 / 副标题 / 版权 / 水印 / logo / 版本号由**后端租户配置**下发：
+
+- 种子：`Admin.NET/Admin.NET.Application/SeedData/SysTenantSeedData.cs`（生效的那份；`Core/SeedData` 那份带 `[IgnoreUpdateSeed]`，改它没效果）
+- 后台可改：**系统配置**（`/platform/infoSetting`）
+
+登录时 `src/utils/sysInfo.ts` 的 `loadSysInfo()` 会用后端返回值**覆盖** `themeConfig` 里的默认值 ——
+所以**只改前端不生效**，`themeConfig.ts` 只是接口失败时的兜底。两处要一起改。
+
+Logo 有两份，内容需保持一致：
+
+| 位置 | 用途 |
+|---|---|
+| `Admin.NET.Web.Entry/wwwroot/upload/logo.svg` | 后端提供给 `<img>` 的默认 logo（dev 由 Vite 的 `^/[Uu]pload` 代理转发） |
+| `src/assets/logo.svg` | 接口失败时前端兜底 |
+
+> 该 svg 在 `.gitignore` 里做了**例外白名单**（`wwwroot/upload/` 整体忽略用户上传物，只放行这一个默认 logo），
+> 否则新克隆的仓库 `/upload/logo.svg` 会 404。

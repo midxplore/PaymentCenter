@@ -26,7 +26,6 @@
 					</el-col>
 					<el-col :xs="24" :sm="24" :md="24" :lg="24" :xl="24" class="mb20">
 						<el-form-item label="存放位置" prop="position">
-							<!-- <el-input v-model="state.ruleForm.position" placeholder="存放位置" clearable>Admin.NET.Application</el-input> -->
 							<el-select v-model="state.ruleForm.position" filterable clearable class="w100" placeholder="存放位置">
 								<el-option v-for="(item, index) in props.applicationNamespaces" :key="index" :label="item" :value="item" />
 							</el-select>
@@ -72,7 +71,7 @@ const openDialog = (row: any) => {
 	state.ruleForm.entityName = upperFirst(camelCase(row.tableName));
 	state.ruleForm.baseClassName = 'EntityBase';
 	state.ruleForm.position = row.position;
-	state.ruleForm.authorName = 'Admin.NET';
+	state.ruleForm.authorName = '支付中心';
 	state.isShowDialog = true;
 };
 

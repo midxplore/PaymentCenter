@@ -167,7 +167,7 @@ const resetQuery = async () => {
 // 打开新增页面
 const handleAdd = () => {
     EditCodeGenRef.value?.openDialog({
-        authorName: 'Admin.NET',
+        authorName: '支付中心',
         generateMethod: 200,
         printType: 1,
         menuIcon: 'ele-Menu',

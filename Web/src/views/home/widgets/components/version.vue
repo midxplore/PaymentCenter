@@ -5,13 +5,9 @@
 			<span> {{ $t('message.list.version') }} </span>
 		</template>
 		<div style="height: 210px; text-align: center">
-			<img :src="verSvg" style="height: 140px" />
-			<h2 style="margin-top: 15px">Admin.NET</h2>
-			<p style="margin-top: 5px">{{ $t('message.list.versionDescription') }} {{ version }}</p>
-		</div>
-		<div style="margin-top: 20px; margin-bottom: 20px; float: right">
-			<el-button type="primary" icon="ele-DocumentCopy" plain round @click="golog">{{ $t('message.list.versionUpdateLog') }}</el-button>
-			<el-button type="primary" icon="ele-Eleme" plain round @click="gogit">gitee</el-button>
+			<img :src="logo" style="height: 110px; margin-top: 30px" />
+			<h2 style="margin-top: 15px">{{ themeConfig.globalTitle }}</h2>
+			<p style="margin-top: 5px">{{ $t('message.list.versionDescription') }} {{ themeConfig.version ?? '—' }}</p>
 		</div>
 	</el-card>
 </template>
@@ -20,29 +16,17 @@
 export default {
 	title: 'Version Information',
 	icon: 'ele-InfoFilled',
-	description: '版本信息原子组件演示',
+	description: '当前版本',
 };
 </script>
 
 <script setup lang="ts" name="version">
-import { ref, onMounted } from 'vue';
-import verSvg from '/@/assets/img/ver.svg';
+// ★ 版本号与系统名都取自后端下发的租户信息（themeConfig.version / globalTitle），
+//   不在这里写死 —— 之前硬编码了版本号与上游框架名，改品牌时必然漏掉这一处。
+import { storeToRefs } from 'pinia';
+import { useThemeConfig } from '/@/stores/themeConfig';
+import logo from '/@/assets/logo.svg';
 
-const version = ref<string>('loading...');
-
-onMounted(() => {
-	version.value = 'v2.0.0';
-});
-
-const getVer = () => {
-	version.value = 'v2.0.0';
-};
-
-const golog = () => {
-	window.open('https://gitee.com/zuohuaijun/Admin.NET/issues');
-};
-
-const gogit = () => {
-	window.open('https://gitee.com/zuohuaijun/Admin.NET.git');
-};
+const storesThemeConfig = useThemeConfig();
+const { themeConfig } = storeToRefs(storesThemeConfig);
 </script>

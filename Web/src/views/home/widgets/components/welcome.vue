@@ -6,7 +6,6 @@
 		</template>
 		<div class="welcome">
 			<div class="logo">
-				<!-- <img src="/@/assets/logo.png" style="height: 150px;"/> -->
 				<h2>{{ $t('message.list.welcomeUse') }} {{ themeConfig.globalTitle }}</h2>
 			</div>
 			<div class="tips">
@@ -29,17 +28,11 @@
 					<div class="tips-item-message">{{ $t('message.list.welcome3') }}</div>
 				</div>
 			</div>
-			<div class="actions">
-				<el-button type="primary" icon="ele-Guide" size="large" @click="godoc">{{ $t('message.list.goDoc') }}</el-button>
-			</div>
 		</div>
 	</el-card>
 </template>
 
 <script setup lang="ts" name="welcome">
-const godoc = () => {
-	window.open('https://adminnet.top/');
-};
 </script>
 
 <script lang="ts">

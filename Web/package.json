@@ -1,10 +1,10 @@
 {
-	"name": "admin.net.pro",
+	"name": "paymentcenter-web",
 	"type": "module",
-	"version": "2.4.33",
-	"lastBuildTime": "2025.12.06",
-	"description": "Admin.NET 站在巨人肩膀上的 .NET 通用权限开发框架",
-	"author": "zuohuaijun",
+	"version": "1.0.0",
+	"lastBuildTime": "2026.09.19",
+	"description": "支付中心 · 收款账号分配系统",
+	"author": "PaymentCenter",
 	"license": "MIT",
 	"scripts": {
 		"dev": "vite --open",
@@ -144,14 +144,12 @@
 		"npm": ">= 7.0.0"
 	},
 	"keywords": [
-		"admin.net",
+		"payment-center",
 		"vue",
 		"vue3",
 		"vuejs/vue-next",
 		"element-ui",
-		"element-plus",
-		"vue-next-admin",
-		"next-admin"
+		"element-plus"
 	],
 	"volta": {
 		"node": "22.19.0"

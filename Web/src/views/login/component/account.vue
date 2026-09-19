@@ -105,7 +105,6 @@ import { accessTokenKey, clearTokens, feature, getAPI } from '/@/utils/axios-uti
 import { SysAuthApi } from '/@/api-services/system/api';
 
 // 旋转图片滑块组件
-// import verifyImg from '/@/assets/logo-mini.svg';
 const DragVerifyImgRotate = defineAsyncComponent(() => import('/@/components/dragVerify/dragVerifyImgRotate.vue'));
 
 const storesThemeConfig = useThemeConfig();

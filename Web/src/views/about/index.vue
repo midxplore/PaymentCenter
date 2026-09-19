@@ -5,8 +5,9 @@
 				<el-icon size="16" style="margin-right: 3px; display: inline; vertical-align: middle"> <ele-Postcard /> </el-icon>简介(About)
 			</h4>
 			<span class="text">
-				🔥基于 .NET 6/8 (Furion/SqlSugar) 实现的通用权限开发框架，前端采用
-				Vue3/Element-plus，代码简洁、易扩展。整合最新技术，模块插件式开发，前后端分离，开箱即用。集成多租户、缓存、数据校验、鉴权、事件总线、动态API、通讯、远程请求、任务调度、打印等众多黑科技。让开发更简单、更通用、更流行！
+				支付中心 · 收款账号分配系统。后台维护一批收款账号/收款码与各自总额度，业务方按「收款类型 + 金额」调用
+				<code>POST /api/pay/allocate</code> 领用一个额度充足的账号并生成订单；到账由外部系统通过
+				<code>POST /api/pay/notify</code> 异步上报（支持分次到账），最终形成一条可审计的收款流水闭环。
 			</span>
 		</div>
 
@@ -15,11 +16,11 @@
 				<el-icon size="16" style="margin-right: 3px; display: inline; vertical-align: middle"> <ele-Warning /> </el-icon>项目信息(Information)
 			</h4>
 			<el-descriptions :column="2" border>
-				<el-descriptions-item label="名称及作者">
+				<el-descriptions-item label="名称">
 					<el-tag>{{ name }}</el-tag> <el-tag type="info">{{ author }}</el-tag>
 				</el-descriptions-item>
 
-				<el-descriptions-item label="框架描述">
+				<el-descriptions-item label="系统说明">
 					<el-tag>{{ description }}</el-tag>
 				</el-descriptions-item>
 
@@ -29,20 +30,6 @@
 
 				<el-descriptions-item label="发布时间">
 					<el-tag>{{ lastBuildTime }}</el-tag>
-				</el-descriptions-item>
-
-				<el-descriptions-item label="Gitee">
-					<el-link type="primary" href="https://gitee.com/zuohuaijun/Admin.NET" target="_blank"> Gitee </el-link>
-				</el-descriptions-item>
-				<el-descriptions-item label="Github">
-					<el-link type="primary" href="https://github.com/zuohuaijun/Admin.NET.git" target="_blank"> Github </el-link>
-				</el-descriptions-item>
-
-				<el-descriptions-item label="文档地址">
-					<el-link type="primary" href="http://101.43.53.74:5050/" target="_blank"> 文档地址 </el-link>
-				</el-descriptions-item>
-				<el-descriptions-item label="预览地址">
-					<el-link type="primary" href="http://101.43.53.74:5005/dist/index.html" target="_blank"> 预览地址 </el-link>
 				</el-descriptions-item>
 			</el-descriptions>
 		</div>

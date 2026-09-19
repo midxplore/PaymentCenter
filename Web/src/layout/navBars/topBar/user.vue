@@ -252,7 +252,7 @@ const onLanguageChange = async (lang: string) => {
 	if (lang == 'en') window.$changeLang('en');
 	else window.$changeLang('zhcn');
 
-	// ★ 后端**没有** SetCulture 端点（已核对 Admin.NET 全仓源码，无 SetCulture 方法），
+	// ★ 本仓库后端**没有** SetCulture 端点（已核对该后端源码，无 SetCulture 方法），
 	//   生成物 SysCommonApi 里自然也没有 apiSysCommonSetCulturePost。
 	//   这一行运行时必然是 TypeError（未处理的 promise rejection）。
 	//   上面两行 window.$changeLang 已经把界面语言切好了，所以去掉这一行不损失功能。
@@ -322,7 +322,7 @@ const receiveNotice = (msg: any) => {
 	});
 	Push.create('提示', {
 		body: '你有一条新的消息',
-		icon: 'logo.png', // public目录下的
+		icon: '/upload/logo.svg', // 系统 logo（由后端 wwwroot/upload 提供）
 		timeout: 4500, // 通知显示时间，单位为毫秒
 	});
 };

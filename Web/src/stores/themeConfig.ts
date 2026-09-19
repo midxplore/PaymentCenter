@@ -102,7 +102,7 @@ export const useThemeConfig = defineStore('themeConfig', {
 			// 是否开启水印
 			isWatermark: true,
 			// 水印文案
-			watermarkText: 'Admin.NET',
+			watermarkText: '支付中心',
 
 			/**
 			 * 其它设置
@@ -135,23 +135,23 @@ export const useThemeConfig = defineStore('themeConfig', {
 			 * 全局网站标题 / 副标题
 			 */
 			// 网站主标题（菜单导航、浏览器当前网页标题）
-			globalTitle: 'Admin.NET.Pro',
+			globalTitle: '支付中心',
 			// 网站副标题（登录页顶部文字）
-			globalViceTitle: 'Admin.NET',
+			globalViceTitle: '支付中心',
 			// 网站副标题（登录页顶部文字）
-			globalViceTitleMsg: '站在巨人肩膀上的 .NET 通用权限开发框架',
+			globalViceTitleMsg: '收款账号分配系统',
 			// 版权和备案文字
-			copyright: 'Copyright © 2021-Present Admin.NET All rights reserved.',
+			copyright: 'Copyright © 2026 支付中心 All rights reserved.',
 			// 默认初始语言，可选值"<zh-CN|en|zh-TW>"，默认 zh-CN
 			globalI18n: 'zh-CN',
 			// 默认全局组件大小，可选值"<large|'default'|small>"，默认 'large'
 			globalComponentSize: 'small',
-			// 系统 logo 地址
-			logoUrl: '',
-			// Icp备案号
-			icp: '省ICP备12345678号',
+			// 系统 logo 地址（本地兜底；实际值以 /api/sysTenant/sysInfo 返回的租户 Logo 为准）
+			logoUrl: '/upload/logo.svg',
+			// Icp备案号（本项目无备案，置空；置空后登录页不渲染备案链接）
+			icp: '',
 			// Icp地址
-			icpUrl: 'https://beian.miit.gov.cn',
+			icpUrl: '',
 			// 是否开启多语言切换
 			i18NSwitch: true,
 			// 闲置超时时间

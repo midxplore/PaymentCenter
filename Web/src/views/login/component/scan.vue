@@ -20,7 +20,8 @@ const initQrcode = () => {
 	nextTick(() => {
 		(<HTMLElement>qrcodeRef.value).innerHTML = '';
 		new QRCode(qrcodeRef.value, {
-			text: `https://gitee.com/zuohuaijun/Admin.NET`,
+			// 扫码只是把当前站点地址编码成二维码（框架自带的演示入口，未接微信扫码登录）
+			text: window.location.origin,
 			width: 260,
 			height: 260,
 			colorDark: '#000000',

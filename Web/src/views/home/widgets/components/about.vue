@@ -7,13 +7,6 @@
 		<p>
 			{{ $t('message.list.aboutprojectDescription') }}
 		</p>
-		<p>
-			<a href="https://gitee.com/zuohuaijun/Admin.NET.git" target="_blank">
-				<img src="https://gitee.com/zuohuaijun/Admin.NET/badge/star.svg?theme=dark" alt="star" style="vertical-align: middle" />
-				<img src="https://gitee.com/zuohuaijun/Admin.NET/badge/fork.svg?theme=dark" alt="fork" style="vertical-align: middle" />
-				<img src="https://img.shields.io/badge/license-MIT-yellow" alt="license" style="vertical-align: middle" />
-			</a>
-		</p>
 	</el-card>
 </template>
 
@@ -21,7 +14,7 @@
 export default {
 	title: 'About Project',
 	icon: 'ele-QuestionFilled',
-	description: '点个星星支持一下',
+	description: '系统用途与额度规则',
 };
 </script>
 <script setup lang="ts" name="about"></script>
