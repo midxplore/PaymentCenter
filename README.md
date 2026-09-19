@@ -1,3 +1,69 @@
+<div align="center"><h1>PaymentCenter</h1></div>
+<div align="center"><h3>收款账号分配系统</h3></div>
+
+按「收款类型 + 金额」从收款账号池中匹配一个额度充足的账号/码并生成订单；到账由外部系统异步上报（支持分次到账），
+最终形成一条可审计的收款流水闭环。构建在 **Admin.NET.Pro 裁剪版**之上 —— 只保留框架与 **PayCenter** 一个业务模块。
+
+## 技术基线
+
+| 项 | 内容 |
+|---|---|
+| 后端 | .NET 8 + Furion.Pure `4.9.7.221` + SqlSugar `5.1.4.210` |
+| 数据库 | **PostgreSQL（唯一形态）** —— 额度预占依赖 `FOR UPDATE` 行锁语义，其它库不可迁移 |
+| 前端 | Vue `3.5` + Element Plus `2.12` + Vite `7.2`（`Web/`） |
+| 时区 | **必须 `TZ=Asia/Shanghai`** —— 全部时间列是 `timestamp without time zone`，不符则**拒绝启动** |
+| 端口 | 后端 `5005` / 前端 `8888` / 本地 PG 容器 `55432` |
+
+## 功能范围（需求 F1~F7）
+
+| 编号 | 功能 | 落点 |
+|---|---|---|
+| F1 | 收款账号/码管理、追加额度、启用停用、额度耗尽自动下架 | 后台「收款管理 → 收款账号」 |
+| F2 | 查询匹配（剩余额度最接近者优先）+ 额度预占 + 幂等 | `POST /api/pay/allocate` |
+| F3 | 全局过期时长 + 每分钟自动过期并释放未达成预占 | 后台作业 `pay_order_expire_job` |
+| F4 | 异步到账通知、分次到账、凭证号去重 | `POST /api/pay/notify` |
+| F5 | 异常到账台账 + 人工关联到订单 | 后台「收款管理 → 异常到账」 |
+| F6 | 签名鉴权（HMAC-SHA256）+ scope 权限隔离 + 密钥脱敏/停用 | `/api/pay/*` |
+| F7 | 订单全生命周期、业务审计（只增不改）、4 类导出 | 后台「收款管理 → 收款订单 / 业务审计」 |
+
+- 对外接口只有 3 个：`/api/pay/allocate`、`/api/pay/notify`、`/api/pay/status`，全部要求**签名鉴权 + scope**
+- 本期不做：周期性额度、退款、多因子路由、IP 白名单、超额到账自动化流程
+
+## 快速开始
+
+```bash
+scripts/dev-up.sh                                  # 库 → 构建 → 后端 → schema 纠偏 → 守卫
+cd Web && env -u NODE_OPTIONS npm run dev          # http://localhost:8888
+scripts/dev-down.sh                                # 停止（--with-db 连库一起停）
+scripts/regress-all.sh --with-login                # 全量 HTTP 回归（串行跑 4 个脚本）
+```
+
+> 路径坑（dotnet / docker / npm / python 都不在 PATH 上）、时区要求与故障速查见 [doc/本地开发环境.md](doc/本地开发环境.md)。
+
+## 文档
+
+| 文档 | 用途 |
+|---|---|
+| **[AGENTS.md](AGENTS.md)** | **在本仓库工作的第一入口**：硬约束、命令表、「静默失效」清单 |
+| [技术设计方案](doc/收款账号分配系统-技术设计方案.md) | **唯一事实来源**：行为、接口契约、设计决策 |
+| [功能需求文档 V3](doc/收款账号分配系统-功能需求文档-V3.md) | 需求原文 |
+| [本地开发环境](doc/本地开发环境.md) | 怎么跑、故障速查 |
+| [S7 验收报告](doc/S7-验收报告.md) | 验收证据与已修缺陷 |
+| [scripts/paycenter-schema.sql](scripts/paycenter-schema.sql) | 期望 schema 的可执行契约（幂等 DDL） |
+| [scripts/pay_schema_guard.py](scripts/pay_schema_guard.py) | schema 漂移 + 源码安全不变式守卫（退出码可挂 CI） |
+
+> ⚠️ 连接串在 `Admin.NET/Admin.NET.Application/Configuration/Database.json`（**唯一来源**）。
+> 该文件会**随发布分发**，部署时必须替换为生产连接串，切勿直接用于生产。
+
+---
+
+## 📎 附录：上游 Admin.NET.Pro 说明（原文保留，仅作参考）
+
+> 本仓库是上游框架的**裁剪版**：保留 `Core / Application / Web.Core / Web.Entry` 四层与本项目模块，
+> 框架自带的示例业务模块与部署脚手架（`docker-compose*.yml` / `build.sh` / `nginx/` 等）已删除。
+> 下面这段是**上游原文**，其中的版本号（`.NET6` / `Vite5`）与部署说明（MySQL 等）描述的是**上游**，
+> 与本仓库基线不同，不要照抄。
+
 <div align="center"><h1>Admin.NET.Pro</h1></div>
 <div align="center"><h3>站在巨人肩膀上的 .NET 通用权限开发框架</h3></div>
 

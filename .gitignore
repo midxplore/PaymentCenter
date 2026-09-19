@@ -57,6 +57,6 @@ node_modules/
 /Admin.NET/Admin.NET-City.db.7z
 /.dev-backend.pid
 
-# nginx 占位证书/私钥：生成物不入库，保留生成脚本 ssl.sh（部署前须替换真实证书）
-/docker/nginx/key/*
-!/docker/nginx/key/ssl.sh
+# Python 字节码缓存：守卫 / 回归探针每跑一次就会被重写，入库即污染每次 review 的 diff
+__pycache__/
+*.pyc
