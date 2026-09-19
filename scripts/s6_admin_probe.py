@@ -41,8 +41,9 @@ import urllib.request
 import uuid
 
 BASE = "http://localhost:5005"
-ACCOUNT = "superAdmin.NET"
-PASSWORD = "Admin.NET++010101"
+# 与后端种子一致（SysUserSeedData: superLang / SysConfigSeedData: sys_password）
+ACCOUNT = "superLang"
+PASSWORD = "Langya.18"
 SUPER_ADMIN_USER_ID = 1300000000101
 DEFAULT_TENANT_ID = 1300000000001
 

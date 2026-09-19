@@ -11,12 +11,12 @@ public class TableEntityEngine : ViewEngineModel
     /// <summary>
     /// 作者
     /// </summary>
-    public string AuthorName { get; set; } = "Admin.NET";
+    public string AuthorName { get; set; } = "支付中心";
 
     /// <summary>
     /// 邮箱
     /// </summary>
-    public string Email { get; set; } = "Admin.NET@qq.com";
+    public string Email { get; set; } = "";
 
     /// <summary>
     /// 命名空间

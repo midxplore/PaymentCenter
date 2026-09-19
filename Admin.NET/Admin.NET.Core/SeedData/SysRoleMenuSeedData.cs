@@ -156,10 +156,6 @@ public class SysRoleMenuSeedData : ISqlSugarEntitySeedData<SysRoleMenu>
             new SysRoleMenu{ Id=1300000000361, RoleId=roleList[0].Id, MenuId=1310000000561 },
             new SysRoleMenu{ Id=1300000000362, RoleId=roleList[0].Id, MenuId=1310000000562 },
             new SysRoleMenu{ Id=1300000000363, RoleId=roleList[0].Id, MenuId=1310000000563 },
-            ////// 帮助文档
-            new SysRoleMenu{ Id=1300000000401, RoleId=roleList[0].Id, MenuId=1320000000101 },
-            new SysRoleMenu{ Id=1300000000402, RoleId=roleList[0].Id, MenuId=1320000000111 },
-            new SysRoleMenu{ Id=1300000000403, RoleId=roleList[0].Id, MenuId=1320000000121 },
             new SysRoleMenu{ Id=1300000000404, RoleId=roleList[0].Id, MenuId=1320000000201 },
 
             // 其他角色默认菜单

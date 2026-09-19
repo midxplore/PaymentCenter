@@ -110,7 +110,7 @@ trap restore EXIT
 
 # ── 前置检查 ─────────────────────────────────────────────────────────────────
 step "0/3 前置检查"
-[[ -x "$PY" ]] || die "找不到 python venv：$PY（只有它装了 psycopg2）"
+[[ -x "$PY" ]] || die "找不到 python venv：${PY}（只有它装了 psycopg2）"
 [[ -f "$SEED" ]] || die "找不到种子文件：$SEED"
 [[ -f "$GUARD" ]] || die "找不到守卫：$GUARD"
 

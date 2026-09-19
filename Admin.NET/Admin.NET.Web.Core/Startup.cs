@@ -391,12 +391,12 @@ public class Startup : AppStartup
             context.Response.Headers.Append("Permissions-Policy", "geolocation=(self)");
             // 强制使用 HTTPS，防止中间人攻击
             context.Response.Headers.Append("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
-            // 隐藏服务器端技术栈
-            context.Response.Headers.Append("X-Powered-By", "Admin.NET");
+            // 隐藏服务器端技术栈：**移除**该响应头，而不是给它赋值。
+            // 原写法 `Append("X-Powered-By", "Admin.NET")` 与注释意图相反 —— 它把框架名
+            // 发给了每一个响应（DevTools / 扫描器一眼可见），既泄漏技术栈也不符合产品品牌。
+            context.Response.Headers.Remove("X-Powered-By");
             // 移除特性响应头
             context.Response.Headers.Remove("Furion");
-            // 添加自定义响应头
-            // context.Response.Headers.Append("Admin.NET", "v2.0.0");
             await next();
         });
 

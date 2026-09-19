@@ -62,8 +62,11 @@ PG_DESC = db_target.describe(_DB)
 
 NODE = os.environ.get("PAY_NODE", "/Users/ipan/.workbuddy-ai/binaries/node/versions/22.22.2-2/bin/node")
 
-ADMIN_ACCOUNT = os.environ.get("PAY_ADMIN_ACCOUNT", "superAdmin.NET")
-ADMIN_PASSWORD = os.environ.get("PAY_ADMIN_PASSWORD", "Admin.NET++010101")
+# ★ 默认值必须与后端种子一致（SysUserSeedData 的 superLang + SysConfigSeedData 的 sys_password）。
+#   原默认值 superAdmin.NET / Admin.NET++010101 是上游**演示环境**的账号口令，本仓库库里不存在 →
+#   不设 PAY_ADMIN_* 时 admin_login 必然失败，且报的是「账号或密码错误」，容易被当成产品缺陷。
+ADMIN_ACCOUNT = os.environ.get("PAY_ADMIN_ACCOUNT", "superLang")
+ADMIN_PASSWORD = os.environ.get("PAY_ADMIN_PASSWORD", "Langya.18")
 
 # 本机跑着 HTTP_PROXY，直连 127.0.0.1 必须绕开，否则会被代理拦成 502
 _opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))

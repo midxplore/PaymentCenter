@@ -20,7 +20,7 @@ public class SysNoticeSeedData : ISqlSugarEntitySeedData<SysNotice>
     {
         return
         [
-            new SysNotice{ Id=1300000000101, Title="欢迎使用 Admin.NET 通用权限开发框架 <a href=\"https://gitee.com/zuohuaijun/Admin.NET\" target=\"_blank\">https://gitee.com/zuohuaijun/Admin.NET</a>", Content="https://adminnet.top/", CreateTime=DateTime.Parse("2025-03-26 00:00:00"), Status=NoticeStatusEnum.PUBLIC },
+            new SysNotice{ Id=1300000000101, Title="欢迎使用支付中心 · 收款账号分配系统", Content="在「收款管理」下维护收款账号与额度、查询收款订单、处理异常到账；对外接口（签名鉴权 + scope）与额度规则见项目文档。", CreateTime=DateTime.Parse("2025-03-26 00:00:00"), Status=NoticeStatusEnum.PUBLIC },
         ];
     }
 }

@@ -193,9 +193,6 @@ public class SysMenuSeedData : ISqlSugarEntitySeedData<SysMenu>
             new SysMenu{ Id=1310000000641, Pid=1310000000601, Title="系统接口", Path="/develop/api", Name="sysApi", Component="layout/routerView/iframe", IsIframe=true, OutLink="http://localhost:5005", Icon="ele-Link", Type=MenuTypeEnum.Menu, CreateTime=DateTime.Parse("2022-02-10 00:00:00"), OrderNo=140 },
             new SysMenu{ Id=1310000000651, Pid=1310000000601, Title="接口压测", Path="/develop/stressTest", Name="sysStressTest", Component="/system/stressTest/index", Icon="ele-Compass", Type=MenuTypeEnum.Menu, CreateTime=DateTime.Parse("2024-12-28 00:00:00"), OrderNo=150 },
 
-            new SysMenu{ Id=1320000000101, Pid=0, Title="帮助文档", Path="/doc", Name="doc", Component="Layout", Icon="ele-Notebook", Type=MenuTypeEnum.Dir, CreateTime=DateTime.Parse("2022-02-10 00:00:00"), OrderNo=15000 },
-            new SysMenu{ Id=1320000000111, Pid=1320000000101, Title="框架教程", Path="/doc/admin", Name="sysAdmin", Component="layout/routerView/link", IsIframe=false, IsKeepAlive=false, OutLink="https://adminnet.top/", Icon="ele-Guide", Type=MenuTypeEnum.Menu, CreateTime=DateTime.Parse("2022-02-10 00:00:00"), OrderNo=100 },
-            new SysMenu{ Id=1320000000121, Pid=1320000000101, Title="SqlSugar", Path="/doc/SqlSugar", Name="sysSqlSugar", Component="layout/routerView/link", IsIframe=false, IsKeepAlive=false, OutLink="https://www.donet5.com/Home/Doc", Icon="ele-Coin", Type=MenuTypeEnum.Menu, CreateTime=DateTime.Parse("2022-02-10 00:00:00"), OrderNo=130 },
 
             new SysMenu{ Id=1320000000201, Pid=0, Title="关于项目", Path="/about", Name="about", Component="/about/index", Icon="ele-InfoFilled", Type=MenuTypeEnum.Menu, CreateTime=DateTime.Parse("2023-03-12 00:00:00"), OrderNo=16000 },
 

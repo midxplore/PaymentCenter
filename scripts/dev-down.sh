@@ -44,13 +44,13 @@ if [[ -f "$PID_FILE" ]]; then
       echo "优雅退出超时，强制结束 $PID"
       kill -KILL "$PID" 2>/dev/null || true
     fi
-    echo "后端已停止（pid $PID）"
+    echo "后端已停止（pid ${PID}）"
   else
     echo "pid $PID 已不在运行，清理 pid 文件"
   fi
   rm -f "$PID_FILE"
 else
-  echo "没有 pid 文件（$PID_FILE）—— 后端可能不是 dev-up.sh 起的，或已停止"
+  echo "没有 pid 文件（${PID_FILE}）—— 后端可能不是 dev-up.sh 起的，或已停止"
 fi
 
 # ── 停数据库 ────────────────────────────────────────────────────────────────

@@ -85,7 +85,7 @@ PYEOF
 #   过去本脚本把库写死成 127.0.0.1:55432/paymentcenter —— 一旦后端切到别的库，
 #   第 5/6 步（schema 纠偏 + 守卫）就会安静地校验**另一个库**：输出全绿，
 #   但后端用的库根本没被验过。这是本项目最忌讳的静默失效。
-[[ -x "$PY" ]] || die "找不到 python venv：$PY（解析数据库配置要用它，也只有它有 psycopg2）"
+[[ -x "$PY" ]] || die "找不到 python venv：${PY}（解析数据库配置要用它，也只有它有 psycopg2）"
 DB_ENV_OUT="$("$PY" "$REPO/scripts/db_target.py" --shell --require-pg)" \
   || die "无法从 Configuration 解析数据库目标，或 DbType 不是 PostgreSQL（scripts/db_target.py）"
 eval "$DB_ENV_OUT"
@@ -95,7 +95,7 @@ export PAY_PG_HOST PAY_PG_PORT PAY_PG_USER PAY_PG_DB PAY_PG_PASSWORD
 
 # ── 0. 前置检查 ──────────────────────────────────────────────────────────────
 step "0/6 前置检查"
-[[ -x "$DOTNET" ]] || die "找不到 dotnet：$DOTNET（本机不在 PATH 上，需绝对路径）"
+[[ -x "$DOTNET" ]] || die "找不到 dotnet：${DOTNET}（本机不在 PATH 上，需绝对路径）"
 echo "dotnet : $($DOTNET --version)"
 echo "目标库 : $PAY_DB_DESC"
 if [[ "$PAY_PG_LOCAL" == "1" ]]; then
@@ -125,7 +125,7 @@ else
     echo -n "."; sleep 1
   done
   docker exec "$PG_CONTAINER" pg_isready -U "$DB_USER" -d "$DB_NAME" >/dev/null 2>&1 \
-    || die "PostgreSQL 未就绪（看 docker logs $PG_CONTAINER）"
+    || die "PostgreSQL 未就绪（看 docker logs ${PG_CONTAINER}）"
 fi
 
 # ── 2. 数据库配置检查（★ 这是「静默连错库」的第一道防线）────────────────────
@@ -160,7 +160,7 @@ mkdir -p "$(dirname "$LOG_FILE")"
 #     (b) pid 文件里记的是 `dotnet run` 的 pid，dev-down.sh 杀不干净。
 #   直接跑 apphost 则是**单进程**，pid 就是宿主本身，cwd 也确定（= 项目目录，决定 logs/ 落在哪）。
 APP_BIN="$ENTRY_DIR/bin/Debug/net8.0/Admin.NET.Web.Entry"
-[[ -x "$APP_BIN" ]] || die "找不到可执行文件 $APP_BIN（构建没成功？）"
+[[ -x "$APP_BIN" ]] || die "找不到可执行文件 ${APP_BIN}（构建没成功？）"
 
 (
   cd "$ENTRY_DIR"
@@ -208,7 +208,7 @@ if [[ "$READY" != "1" ]]; then
   echo
   echo "✗ 后端未在 ${READY_MAX}s 内就绪。最后 30 行日志（口令已打码）：" >&2
   show_log_tail "$LOG_FILE" 30
-  die "后端未就绪（日志 $LOG_FILE）"
+  die "后端未就绪（日志 ${LOG_FILE}）"
 fi
 
 # ★ 数据库到底是哪个？启动日志里有一行「初始化数据库 xxx」—— 直接断言，不靠猜。
@@ -265,7 +265,7 @@ if [[ "$RUN_GUARD" == "1" ]]; then
   if [[ -x "$PY" ]]; then
     "$PY" "$REPO/scripts/pay_schema_guard.py" || die "schema 守卫未通过（说明代码/活库/入参三者已漂移）"
   else
-    echo "跳过：找不到 python venv（$PY），它才有 psycopg2"
+    echo "跳过：找不到 python venv（${PY}），它才有 psycopg2"
   fi
 else
   step "6/6 schema 守卫（已用 --no-guard 跳过）"
