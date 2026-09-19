@@ -75,11 +75,16 @@ set_captcha() {  # on | off
   local want="$1" from to
   if [[ "$want" == "on" ]]; then from='Captcha=false,'; to='Captcha=true,';
   else                            from='Captcha=true,';  to='Captcha=false,'; fi
+  # ★ 必须按**二进制**读写（newline=''）：本仓库的 .gitattributes 要求 *.cs 为 CRLF，
+  #   而 Python 文本模式默认把 \r\n 归一化成 \n 再写回 —— 结果是**每跑一次回归，
+  #   种子文件的行尾就被永久改成 LF**，仓库随之变脏（只报一条易被忽略的
+  #   “LF will be replaced by CRLF” 警告）。实测踩到过。
   "$PY" - "$SEED" "$from" "$to" <<'PYEOF'
-import pathlib, sys
-p = pathlib.Path(sys.argv[1]); s = p.read_text(encoding="utf-8")
+import io, pathlib, sys
+p = pathlib.Path(sys.argv[1])
+s = io.open(p, encoding="utf-8", newline="").read()
 assert s.count(sys.argv[2]) == 1, f"种子里的 {sys.argv[2]!r} 命中 {s.count(sys.argv[2])} 次，预期 1"
-p.write_text(s.replace(sys.argv[2], sys.argv[3]), encoding="utf-8")
+io.open(p, "w", encoding="utf-8", newline="").write(s.replace(sys.argv[2], sys.argv[3]))
 PYEOF
 }
 
