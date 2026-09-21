@@ -29,7 +29,7 @@ import { NotifyInput } from '../models';
 export const PayApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
         /**
-         * 流程见设计文档 §5.1：幂等前置检查 → 循环 CAS 预占额度 → 事务内落订单与事件流水。 无可用账号时返回 P1001 且<b>不生成订单</b>（F2.5）。
+         * 流程见设计文档 §5.1：幂等前置检查 → 循环 CAS 预占额度 → 事务内落订单与事件流水。 无可用账号时返回 API_ACCOUNT_UNAVAILABLE 且<b>不生成订单</b>（F2.5）。
          * @summary 查询匹配收款账号（F2）
          * @param {AllocateInput} [body] 
          * @param {*} [options] Override http request option.
@@ -127,7 +127,7 @@ export const PayApiAxiosParamCreator = function (configuration?: Configuration) 
             };
         },
         /**
-         *  <b>归属校验</b>：只返回**本调用方自己创建**的订单。             签名鉴权只回答「你是谁」，不回答「这条数据是不是你的」——             若只按 `OrderNo` 查，任何持有效密钥的接入方都能读到别人的订单             （返回体含对方的 `ExternalNo` 与累计到账金额）。  「不存在」与「不是你的」统一返回 Admin.NET.Core.ErrorCodeEnum.P1004：             若对后者返回一个不同的错误，等于提供了一个「订单号是否存在」的探测接口。
+         *  <b>归属校验</b>：只返回**本调用方自己创建**的订单。             签名鉴权只回答「你是谁」，不回答「这条数据是不是你的」——             若只按 `OrderNo` 查，任何持有效密钥的接入方都能读到别人的订单             （返回体含对方的 `ExternalNo` 与累计到账金额）。  「不存在」与「不是你的」统一返回 Admin.NET.Core.ErrorCodeEnum.API_ORDER_NOT_FOUND：             若对后者返回一个不同的错误，等于提供了一个「订单号是否存在」的探测接口。
          * @summary 查询收款订单状态（§7.3）
          * @param {string} [orderNo] 系统订单号
          * @param {*} [options] Override http request option.
@@ -184,7 +184,7 @@ export const PayApiAxiosParamCreator = function (configuration?: Configuration) 
 export const PayApiFp = function(configuration?: Configuration) {
     return {
         /**
-         * 流程见设计文档 §5.1：幂等前置检查 → 循环 CAS 预占额度 → 事务内落订单与事件流水。 无可用账号时返回 P1001 且<b>不生成订单</b>（F2.5）。
+         * 流程见设计文档 §5.1：幂等前置检查 → 循环 CAS 预占额度 → 事务内落订单与事件流水。 无可用账号时返回 API_ACCOUNT_UNAVAILABLE 且<b>不生成订单</b>（F2.5）。
          * @summary 查询匹配收款账号（F2）
          * @param {AllocateInput} [body] 
          * @param {*} [options] Override http request option.
@@ -212,7 +212,7 @@ export const PayApiFp = function(configuration?: Configuration) {
             };
         },
         /**
-         *  <b>归属校验</b>：只返回**本调用方自己创建**的订单。             签名鉴权只回答「你是谁」，不回答「这条数据是不是你的」——             若只按 `OrderNo` 查，任何持有效密钥的接入方都能读到别人的订单             （返回体含对方的 `ExternalNo` 与累计到账金额）。  「不存在」与「不是你的」统一返回 Admin.NET.Core.ErrorCodeEnum.P1004：             若对后者返回一个不同的错误，等于提供了一个「订单号是否存在」的探测接口。
+         *  <b>归属校验</b>：只返回**本调用方自己创建**的订单。             签名鉴权只回答「你是谁」，不回答「这条数据是不是你的」——             若只按 `OrderNo` 查，任何持有效密钥的接入方都能读到别人的订单             （返回体含对方的 `ExternalNo` 与累计到账金额）。  「不存在」与「不是你的」统一返回 Admin.NET.Core.ErrorCodeEnum.API_ORDER_NOT_FOUND：             若对后者返回一个不同的错误，等于提供了一个「订单号是否存在」的探测接口。
          * @summary 查询收款订单状态（§7.3）
          * @param {string} [orderNo] 系统订单号
          * @param {*} [options] Override http request option.
@@ -235,7 +235,7 @@ export const PayApiFp = function(configuration?: Configuration) {
 export const PayApiFactory = function (configuration?: Configuration, basePath?: string, axios?: AxiosInstance) {
     return {
         /**
-         * 流程见设计文档 §5.1：幂等前置检查 → 循环 CAS 预占额度 → 事务内落订单与事件流水。 无可用账号时返回 P1001 且<b>不生成订单</b>（F2.5）。
+         * 流程见设计文档 §5.1：幂等前置检查 → 循环 CAS 预占额度 → 事务内落订单与事件流水。 无可用账号时返回 API_ACCOUNT_UNAVAILABLE 且<b>不生成订单</b>（F2.5）。
          * @summary 查询匹配收款账号（F2）
          * @param {AllocateInput} [body] 
          * @param {*} [options] Override http request option.
@@ -255,7 +255,7 @@ export const PayApiFactory = function (configuration?: Configuration, basePath?:
             return PayApiFp(configuration).apiPayNotifyPost(body, options).then((request) => request(axios, basePath));
         },
         /**
-         *  <b>归属校验</b>：只返回**本调用方自己创建**的订单。             签名鉴权只回答「你是谁」，不回答「这条数据是不是你的」——             若只按 `OrderNo` 查，任何持有效密钥的接入方都能读到别人的订单             （返回体含对方的 `ExternalNo` 与累计到账金额）。  「不存在」与「不是你的」统一返回 Admin.NET.Core.ErrorCodeEnum.P1004：             若对后者返回一个不同的错误，等于提供了一个「订单号是否存在」的探测接口。
+         *  <b>归属校验</b>：只返回**本调用方自己创建**的订单。             签名鉴权只回答「你是谁」，不回答「这条数据是不是你的」——             若只按 `OrderNo` 查，任何持有效密钥的接入方都能读到别人的订单             （返回体含对方的 `ExternalNo` 与累计到账金额）。  「不存在」与「不是你的」统一返回 Admin.NET.Core.ErrorCodeEnum.API_ORDER_NOT_FOUND：             若对后者返回一个不同的错误，等于提供了一个「订单号是否存在」的探测接口。
          * @summary 查询收款订单状态（§7.3）
          * @param {string} [orderNo] 系统订单号
          * @param {*} [options] Override http request option.
@@ -275,7 +275,7 @@ export const PayApiFactory = function (configuration?: Configuration, basePath?:
  */
 export class PayApi extends BaseAPI {
     /**
-     * 流程见设计文档 §5.1：幂等前置检查 → 循环 CAS 预占额度 → 事务内落订单与事件流水。 无可用账号时返回 P1001 且<b>不生成订单</b>（F2.5）。
+     * 流程见设计文档 §5.1：幂等前置检查 → 循环 CAS 预占额度 → 事务内落订单与事件流水。 无可用账号时返回 API_ACCOUNT_UNAVAILABLE 且<b>不生成订单</b>（F2.5）。
      * @summary 查询匹配收款账号（F2）
      * @param {AllocateInput} [body] 
      * @param {*} [options] Override http request option.
@@ -297,7 +297,7 @@ export class PayApi extends BaseAPI {
         return PayApiFp(this.configuration).apiPayNotifyPost(body, options).then((request) => request(this.axios, this.basePath));
     }
     /**
-     *  <b>归属校验</b>：只返回**本调用方自己创建**的订单。             签名鉴权只回答「你是谁」，不回答「这条数据是不是你的」——             若只按 `OrderNo` 查，任何持有效密钥的接入方都能读到别人的订单             （返回体含对方的 `ExternalNo` 与累计到账金额）。  「不存在」与「不是你的」统一返回 Admin.NET.Core.ErrorCodeEnum.P1004：             若对后者返回一个不同的错误，等于提供了一个「订单号是否存在」的探测接口。
+     *  <b>归属校验</b>：只返回**本调用方自己创建**的订单。             签名鉴权只回答「你是谁」，不回答「这条数据是不是你的」——             若只按 `OrderNo` 查，任何持有效密钥的接入方都能读到别人的订单             （返回体含对方的 `ExternalNo` 与累计到账金额）。  「不存在」与「不是你的」统一返回 Admin.NET.Core.ErrorCodeEnum.API_ORDER_NOT_FOUND：             若对后者返回一个不同的错误，等于提供了一个「订单号是否存在」的探测接口。
      * @summary 查询收款订单状态（§7.3）
      * @param {string} [orderNo] 系统订单号
      * @param {*} [options] Override http request option.

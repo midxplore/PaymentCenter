@@ -62,6 +62,14 @@ export interface PayOrderOutput {
     accountInfo?: string | null;
 
     /**
+     * 收款码图片的根相对路径。无图时为空。
+     *
+     * @type {string}
+     * @memberof PayOrderOutput
+     */
+    qrImageUrl?: string | null;
+
+    /**
      * 收款类型
      *
      * @type {string}

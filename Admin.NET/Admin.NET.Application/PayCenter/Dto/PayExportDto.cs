@@ -81,6 +81,12 @@ public class PayOrderExportDto
     public string AccountInfo { get; set; }
 
     /// <summary>
+    /// 收款码图片路径
+    /// </summary>
+    [ExporterHeader(DisplayName = "收款码图片")]
+    public string QrImageUrl { get; set; }
+
+    /// <summary>
     /// 请求金额
     /// </summary>
     [ExporterHeader(DisplayName = "请求金额")]

@@ -186,15 +186,19 @@ public class SysMenuSeedData : ISqlSugarEntitySeedData<SysMenu>
             new SysMenu{ Id=1310000000562, Pid=1310000000561, Title="查询", Permission="sysLogHttp/page", Type=MenuTypeEnum.Btn, CreateTime=DateTime.Parse("2022-02-10 00:00:00"), OrderNo=100 },
             new SysMenu{ Id=1310000000563, Pid=1310000000561, Title="清空", Permission="sysLogHttp/clear", Type=MenuTypeEnum.Btn, CreateTime=DateTime.Parse("2022-02-10 00:00:00"), OrderNo=100 },
 
-            new SysMenu{ Id=1310000000601, Pid=0, Title="开发工具", Path="/develop", Name="develop", Component="Layout", Icon="ele-Cpu", Type=MenuTypeEnum.Dir, CreateTime=DateTime.Parse("2022-02-10 00:00:00"), OrderNo=13000 },
-            new SysMenu{ Id=1310000000611, Pid=1310000000601, Title="库表管理", Path="/develop/database", Name="sysDatabase", Component="/system/database/index",Icon="ele-Coin", Type=MenuTypeEnum.Menu, CreateTime=DateTime.Parse("2022-02-10 00:00:00"), OrderNo=100 },
-            new SysMenu{ Id=1310000000621, Pid=1310000000601, Title="代码生成", Path="/develop/codeGen", Name="sysCodeGen", Component="/system/codeGen/index", Icon="ele-DocumentCopy", Type=MenuTypeEnum.Menu, CreateTime=DateTime.Parse("2022-02-10 00:00:00"), OrderNo=120 },
-            new SysMenu{ Id=1310000000631, Pid=1310000000601, Title="表单设计", Path="/develop/formDes", Name="sysFormDes", Component="/system/formDes/index", Icon="ele-Edit", Type=MenuTypeEnum.Menu, CreateTime=DateTime.Parse("2022-02-10 00:00:00"), OrderNo=130 },
-            new SysMenu{ Id=1310000000641, Pid=1310000000601, Title="系统接口", Path="/develop/api", Name="sysApi", Component="layout/routerView/iframe", IsIframe=true, OutLink="http://localhost:5005", Icon="ele-Link", Type=MenuTypeEnum.Menu, CreateTime=DateTime.Parse("2022-02-10 00:00:00"), OrderNo=140 },
-            new SysMenu{ Id=1310000000651, Pid=1310000000601, Title="接口压测", Path="/develop/stressTest", Name="sysStressTest", Component="/system/stressTest/index", Icon="ele-Compass", Type=MenuTypeEnum.Menu, CreateTime=DateTime.Parse("2024-12-28 00:00:00"), OrderNo=150 },
+            // ★ 「开发工具」整棵子树与「关于项目」对最终用户不可见：IsHide=true 加在**每一行**上。
+            //   不要只给目录行加 IsHide —— 侧边栏是递归过滤（隐藏目录即隐藏子树），
+            //   但顶部菜单搜索用的是拍平后的一维列表、逐项判 isHide，
+            //   只隐藏目录会让子项仍能被搜到并点进去。
+            new SysMenu{ Id=1310000000601, Pid=0, Title="开发工具", Path="/develop", Name="develop", Component="Layout", Icon="ele-Cpu", Type=MenuTypeEnum.Dir, IsHide=true, CreateTime=DateTime.Parse("2022-02-10 00:00:00"), OrderNo=13000 },
+            new SysMenu{ Id=1310000000611, Pid=1310000000601, Title="库表管理", Path="/develop/database", Name="sysDatabase", Component="/system/database/index",Icon="ele-Coin", Type=MenuTypeEnum.Menu, IsHide=true, CreateTime=DateTime.Parse("2022-02-10 00:00:00"), OrderNo=100 },
+            new SysMenu{ Id=1310000000621, Pid=1310000000601, Title="代码生成", Path="/develop/codeGen", Name="sysCodeGen", Component="/system/codeGen/index", Icon="ele-DocumentCopy", Type=MenuTypeEnum.Menu, IsHide=true, CreateTime=DateTime.Parse("2022-02-10 00:00:00"), OrderNo=120 },
+            new SysMenu{ Id=1310000000631, Pid=1310000000601, Title="表单设计", Path="/develop/formDes", Name="sysFormDes", Component="/system/formDes/index", Icon="ele-Edit", Type=MenuTypeEnum.Menu, IsHide=true, CreateTime=DateTime.Parse("2022-02-10 00:00:00"), OrderNo=130 },
+            new SysMenu{ Id=1310000000641, Pid=1310000000601, Title="系统接口", Path="/develop/api", Name="sysApi", Component="layout/routerView/iframe", IsIframe=true, OutLink="http://localhost:5005", Icon="ele-Link", Type=MenuTypeEnum.Menu, IsHide=true, CreateTime=DateTime.Parse("2022-02-10 00:00:00"), OrderNo=140 },
+            new SysMenu{ Id=1310000000651, Pid=1310000000601, Title="接口压测", Path="/develop/stressTest", Name="sysStressTest", Component="/system/stressTest/index", Icon="ele-Compass", Type=MenuTypeEnum.Menu, IsHide=true, CreateTime=DateTime.Parse("2024-12-28 00:00:00"), OrderNo=150 },
 
 
-            new SysMenu{ Id=1320000000201, Pid=0, Title="关于项目", Path="/about", Name="about", Component="/about/index", Icon="ele-InfoFilled", Type=MenuTypeEnum.Menu, CreateTime=DateTime.Parse("2023-03-12 00:00:00"), OrderNo=16000 },
+            new SysMenu{ Id=1320000000201, Pid=0, Title="关于项目", Path="/about", Name="about", Component="/about/index", Icon="ele-InfoFilled", Type=MenuTypeEnum.Menu, IsHide=true, CreateTime=DateTime.Parse("2023-03-12 00:00:00"), OrderNo=16000 },
 
     ];
     }

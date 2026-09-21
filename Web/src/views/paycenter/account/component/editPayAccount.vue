@@ -17,9 +17,22 @@
 					</el-form-item>
 				</el-col>
 				<el-col :xs="24" :sm="24" :md="24" :lg="24" :xl="24" class="mb20">
-					<el-form-item label="账号信息" prop="accountInfo" :rules="[{ required: true, message: '账号信息不能为空', trigger: 'blur' }]">
-						<!-- 微信/支付宝收款码填收款码链接或账号；银行卡填卡号 -->
-						<el-input v-model="state.ruleForm.accountInfo" placeholder="收款码 / 账号 / 卡号" :disabled="isEdit" clearable />
+					<el-form-item label="账号信息" prop="accountInfo">
+						<el-input v-model="state.ruleForm.accountInfo" placeholder="卡号 / 账号 / 收款码文本，与图片至少填一个" clearable />
+					</el-form-item>
+				</el-col>
+				<el-col :xs="24" :sm="24" :md="24" :lg="24" :xl="24" class="mb20">
+					<el-form-item label="收款码图片">
+						<div class="qr-upload">
+							<el-image v-if="state.ruleForm.qrImageUrl" :src="state.ruleForm.qrImageUrl" :preview-src-list="[state.ruleForm.qrImageUrl]" fit="contain" class="qr-preview" preview-teleported />
+							<div v-else class="qr-empty">未上传</div>
+							<div class="qr-actions">
+								<el-upload :show-file-list="false" :auto-upload="false" accept=".jpg,.jpeg,.png,.bmp,.webp" :on-change="onQrChange">
+									<el-button type="primary" :loading="state.uploading" v-auth="'payAccount/uploadQr'">{{ state.ruleForm.qrImageUrl ? '更换图片' : '上传图片' }}</el-button>
+								</el-upload>
+								<el-button v-if="state.ruleForm.qrImageUrl" @click="clearQr">清除</el-button>
+							</div>
+						</div>
 					</el-form-item>
 				</el-col>
 				<el-col v-if="!isEdit" :xs="24" :sm="24" :md="24" :lg="24" :xl="24" class="mb20">
@@ -54,6 +67,7 @@
 
 <script lang="ts" setup name="payAccountEdit">
 import { computed, onMounted, reactive, ref } from 'vue';
+import { ElMessage, UploadFile } from 'element-plus';
 
 import { getAPI } from '/@/utils/axios-utils';
 import { PayAccountApi } from '/@/api-services/system/api';
@@ -69,9 +83,10 @@ const state = reactive({
 	submitting: false,
 	ruleForm: {} as any,
 	typeOptions: [] as Array<PayTypeOption>,
+	uploading: false,
 });
 
-// 有 Id 即编辑态（编辑只允许改备注与状态）
+// 有 Id 即编辑态（类型仍不可改；账号文本 / 收款码 / 备注 / 状态可改）
 const isEdit = computed(() => state.ruleForm.id != undefined && state.ruleForm.id > 0);
 
 onMounted(async () => {
@@ -101,18 +116,27 @@ const cancel = () => {
 const submit = () => {
 	ruleFormRef.value.validate(async (valid: boolean) => {
 		if (!valid) return;
+		const accountInfo = (state.ruleForm.accountInfo || '').trim();
+		const qrImageUrl = (state.ruleForm.qrImageUrl || '').trim();
+		if (!accountInfo && !qrImageUrl) {
+			ElMessage.error('请填写账号信息或上传收款码图片');
+			return;
+		}
 		state.submitting = true;
 		try {
 			if (isEdit.value) {
 				await getAPI(PayAccountApi).apiPayAccountUpdatePost({
 					id: state.ruleForm.id,
+					accountInfo,
 					remark: state.ruleForm.remark,
 					status: state.ruleForm.status,
+					qrImageUrl,
 				});
 			} else {
 				await getAPI(PayAccountApi).apiPayAccountAddPost({
 					type: state.ruleForm.type,
-					accountInfo: state.ruleForm.accountInfo,
+					accountInfo,
+					qrImageUrl,
 					totalQuota: state.ruleForm.totalQuota,
 					remark: state.ruleForm.remark,
 				});
@@ -124,6 +148,53 @@ const submit = () => {
 	});
 };
 
+const onQrChange = async (file: UploadFile) => {
+	if (!file.raw) return;
+	const allow = ['image/jpeg', 'image/jpg', 'image/png', 'image/bmp', 'image/webp'];
+	if (file.raw.type && !allow.includes(file.raw.type)) {
+		ElMessage.error('只支持 jpg、png、bmp、webp');
+		return;
+	}
+	state.uploading = true;
+	try {
+		const res = await getAPI(PayAccountApi).apiPayAccountUploadQrPostForm(file.raw);
+		state.ruleForm.qrImageUrl = res.data.result ?? '';
+	} finally {
+		state.uploading = false;
+	}
+};
+
+const clearQr = () => {
+	state.ruleForm.qrImageUrl = '';
+};
+
 // 导出对象
 defineExpose({ openDialog });
 </script>
+
+<style scoped>
+.qr-upload {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+.qr-preview,
+.qr-empty {
+	width: 96px;
+	height: 96px;
+	border: 1px dashed var(--el-border-color);
+	border-radius: 4px;
+}
+.qr-empty {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--el-text-color-secondary);
+	font-size: 12px;
+}
+.qr-actions {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+</style>

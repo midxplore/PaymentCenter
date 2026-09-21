@@ -27,6 +27,7 @@ import { BaseIdInput } from '../models';
 import { PagePayAccountInput } from '../models';
 import { SetPayAccountStatusInput } from '../models';
 import { UpdatePayAccountInput } from '../models';
+import { AdminNETResultString } from '../models';
 /**
  * PayAccountApi - axios parameter creator
  * @export
@@ -422,6 +423,54 @@ export const PayAccountApiAxiosParamCreator = function (configuration?: Configur
                 options: localVarRequestOptions,
             };
         },
+        /**
+         * 上传收款码图片，返回根相对路径
+         * @summary 上传收款码图片
+         * @param {Blob} [file]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        apiPayAccountUploadQrPostForm: async (file?: Blob, options: AxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/payAccount/uploadQr`;
+            const localVarUrlObj = new URL(localVarPath, 'https://example.com');
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions :AxiosRequestConfig = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+            const localVarFormParams = new FormData();
+
+            if (configuration && configuration.accessToken) {
+                const accessToken = typeof configuration.accessToken === 'function'
+                    ? await configuration.accessToken()
+                    : await configuration.accessToken;
+                localVarHeaderParameter["Authorization"] = "Bearer " + accessToken;
+            }
+
+            if (file !== undefined) {
+                localVarFormParams.append('file', file as any);
+            }
+
+            localVarHeaderParameter['Content-Type'] = 'multipart/form-data';
+            const query = new URLSearchParams(localVarUrlObj.search);
+            for (const key in localVarQueryParameter) {
+                query.set(key, localVarQueryParameter[key]);
+            }
+            for (const key in options.params) {
+                query.set(key, options.params[key]);
+            }
+            localVarUrlObj.search = (new URLSearchParams(query)).toString();
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = localVarFormParams;
+
+            return {
+                url: localVarUrlObj.pathname + localVarUrlObj.search + localVarUrlObj.hash,
+                options: localVarRequestOptions,
+            };
+        },
     }
 };
 
@@ -542,6 +591,20 @@ export const PayAccountApiFp = function(configuration?: Configuration) {
                 return axios.request(axiosRequestArgs);
             };
         },
+        /**
+         * 上传收款码图片，返回根相对路径
+         * @summary 上传收款码图片
+         * @param {Blob} [file]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async apiPayAccountUploadQrPostForm(file?: Blob, options?: AxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => Promise<AxiosResponse<AdminNETResultString>>> {
+            const localVarAxiosArgs = await PayAccountApiAxiosParamCreator(configuration).apiPayAccountUploadQrPostForm(file, options);
+            return (axios: AxiosInstance = globalAxios, basePath: string = BASE_PATH) => {
+                const axiosRequestArgs :AxiosRequestConfig = {...localVarAxiosArgs.options, url: basePath + localVarAxiosArgs.url};
+                return axios.request(axiosRequestArgs);
+            };
+        },
     }
 };
 
@@ -629,6 +692,16 @@ export const PayAccountApiFactory = function (configuration?: Configuration, bas
          */
         async apiPayAccountUpdatePost(body?: UpdatePayAccountInput, options?: AxiosRequestConfig): Promise<AxiosResponse<void>> {
             return PayAccountApiFp(configuration).apiPayAccountUpdatePost(body, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 上传收款码图片，返回根相对路径
+         * @summary 上传收款码图片
+         * @param {Blob} [file]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async apiPayAccountUploadQrPostForm(file?: Blob, options?: AxiosRequestConfig): Promise<AxiosResponse<AdminNETResultString>> {
+            return PayAccountApiFp(configuration).apiPayAccountUploadQrPostForm(file, options).then((request) => request(axios, basePath));
         },
     };
 };
@@ -726,5 +799,16 @@ export class PayAccountApi extends BaseAPI {
      */
     public async apiPayAccountUpdatePost(body?: UpdatePayAccountInput, options?: AxiosRequestConfig) : Promise<AxiosResponse<void>> {
         return PayAccountApiFp(this.configuration).apiPayAccountUpdatePost(body, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     * 上传收款码图片，返回根相对路径
+     * @summary 上传收款码图片
+     * @param {Blob} [file]
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof PayAccountApi
+     */
+    public async apiPayAccountUploadQrPostForm(file?: Blob, options?: AxiosRequestConfig) : Promise<AxiosResponse<AdminNETResultString>> {
+        return PayAccountApiFp(this.configuration).apiPayAccountUploadQrPostForm(file, options).then((request) => request(this.axios, this.basePath));
     }
 }

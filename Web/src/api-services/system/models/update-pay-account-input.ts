@@ -14,7 +14,7 @@
 
 import { PayAccountStatusEnum } from './pay-account-status-enum';
  /**
- * 编辑收款账号输入（F1.2：仅支持修改备注、状态）
+ * 编辑收款账号（账号文本、收款码、备注、状态）
  *
  * @export
  * @interface UpdatePayAccountInput
@@ -28,6 +28,22 @@ export interface UpdatePayAccountInput {
      * @memberof UpdatePayAccountInput
      */
     id: number;
+
+    /**
+     * 账号信息。不传表示不修改；空字符串表示清除。与收款码至少填一个。
+     *
+     * @type {string}
+     * @memberof UpdatePayAccountInput
+     */
+    accountInfo?: string | null;
+
+    /**
+     * 收款码图片路径。不传表示不修改；空字符串表示清除。
+     *
+     * @type {string}
+     * @memberof UpdatePayAccountInput
+     */
+    qrImageUrl?: string | null;
 
     /**
      * 备注

@@ -52,7 +52,7 @@
     "WorkerId": 1, // 雪花Id机器码，多服务器时全局唯一
     "WorkerIdBitLength": 6, // 机器码位长 默认值6，取值范围 [1, 19]
     "SeqBitLength": 6, // 序列数位长 默认值6，取值范围 [3, 21]（建议不小于4，值越大性能越高、Id位数也更长）
-    "WorkerPrefix": "adminnet_", // 缓存前缀
+    "WorkerPrefix": "paymentcenter_", // 缓存前缀
     "BaseTime": "2020-02-20T02:20:02.020Z" // 基准时间 必须确保所有服务节点使用完全相同的基准时间，系统上线后绝对不可更改！！！
   },
   // 密码策略

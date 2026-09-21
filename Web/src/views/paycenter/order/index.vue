@@ -23,7 +23,7 @@
 					<el-col class="mb5" :xs="24" :sm="12" :md="8" :lg="6" :xl="6">
 						<el-form-item label="收款账号" prop="accountId">
 							<el-select v-model="state.queryParams.accountId" placeholder="收款账号（账号维度审计）" filterable clearable style="width: 100%">
-								<el-option v-for="item in state.accountData" :key="item.id" :label="`${item.type}【${item.accountInfo}】`" :value="item.id" />
+								<el-option v-for="item in state.accountData" :key="item.id" :label="`${item.type}【${item.accountInfo || (item.qrImageUrl ? '收款码' : '-')}】`" :value="item.id" />
 							</el-select>
 						</el-form-item>
 					</el-col>
@@ -79,6 +79,12 @@
 				<template #toolbar_tools> </template>
 				<template #empty>
 					<el-empty :image-size="200" />
+				</template>
+				<template #row_account="{ row }">
+					<div class="account-cell">
+						<el-image v-if="row.qrImageUrl" :src="row.qrImageUrl" :preview-src-list="[row.qrImageUrl]" fit="cover" class="qr-thumb" preview-teleported />
+						<span>{{ row.accountInfo || (row.qrImageUrl ? '收款码' : '-') }}</span>
+					</div>
 				</template>
 				<template #row_orderNo="{ row }">
 					<el-link type="primary" @click="handleView(row)">{{ row.orderNo }}</el-link>
@@ -151,7 +157,7 @@ const options = useVxeTable<PayOrderOutput>(
 			{ field: 'seq', type: 'seq', title: '序号', width: 60, fixed: 'left' },
 			{ field: 'orderNo', title: '系统订单号', minWidth: 260, showOverflow: 'tooltip', slots: { default: 'row_orderNo' } },
 			{ field: 'externalNo', title: '外部单号', minWidth: 160, showOverflow: 'tooltip' },
-			{ field: 'accountInfo', title: '收款账号', minWidth: 180, showOverflow: 'tooltip' },
+			{ field: 'accountInfo', title: '收款账号', minWidth: 200, slots: { default: 'row_account' } },
 			{ field: 'accountType', title: '收款类型', minWidth: 110, showOverflow: 'tooltip' },
 			{ field: 'requestAmount', title: '请求金额', minWidth: 110, align: 'right', formatter: ({ cellValue }) => money(cellValue) },
 			{ field: 'receivedAmount', title: '已到账', minWidth: 110, align: 'right', formatter: ({ cellValue }) => money(cellValue) },
@@ -288,5 +294,16 @@ const statusTagType = (status: any) => {
 .text-danger {
 	color: var(--el-color-danger);
 	font-weight: 600;
+}
+.account-cell {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.qr-thumb {
+	width: 36px;
+	height: 36px;
+	flex: none;
+	border-radius: 2px;
 }
 </style>

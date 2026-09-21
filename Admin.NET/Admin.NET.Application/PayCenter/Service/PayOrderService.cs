@@ -97,7 +97,7 @@ public class PayOrderService : IDynamicApiController, ITransient
     [DisplayName("获取收款订单详情")]
     public async Task<PayOrderDetailOutput> Detail([FromQuery] BaseIdInput input)
     {
-        var order = await _payOrderRep.GetByIdAsync(input.Id) ?? throw Oops.Oh(ErrorCodeEnum.P1004);
+        var order = await _payOrderRep.GetByIdAsync(input.Id) ?? throw Oops.Oh(ErrorCodeEnum.API_ORDER_NOT_FOUND);
 
         var account = order.AccountId > 0
             ? await _payAccountRep.AsQueryable().Where(u => u.Id == order.AccountId).FirstAsync()
@@ -128,11 +128,11 @@ public class PayOrderService : IDynamicApiController, ITransient
     [DisplayName("按订单号获取收款订单详情")]
     public async Task<PayOrderDetailOutput> DetailByNo([FromQuery] string orderNo)
     {
-        if (string.IsNullOrWhiteSpace(orderNo)) throw Oops.Oh(ErrorCodeEnum.P1004);
+        if (string.IsNullOrWhiteSpace(orderNo)) throw Oops.Oh(ErrorCodeEnum.API_ORDER_NOT_FOUND);
 
         var order = await _payOrderRep.AsQueryable()
             .Where(u => u.OrderNo == orderNo.Trim())
-            .FirstAsync() ?? throw Oops.Oh(ErrorCodeEnum.P1004);
+            .FirstAsync() ?? throw Oops.Oh(ErrorCodeEnum.API_ORDER_NOT_FOUND);
 
         return await Detail(new BaseIdInput { Id = order.Id });
     }
@@ -164,6 +164,7 @@ public class PayOrderService : IDynamicApiController, ITransient
             ExternalNo = order.ExternalNo,
             AccountId = order.AccountId,
             AccountInfo = account?.AccountInfo,
+            QrImageUrl = account?.QrImageUrl ?? "",
             AccountType = account?.Type,
             RequestAmount = order.RequestAmount,
             ReceivedAmount = order.ReceivedAmount,

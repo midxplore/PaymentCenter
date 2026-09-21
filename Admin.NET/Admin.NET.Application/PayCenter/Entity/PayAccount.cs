@@ -26,11 +26,18 @@ public class PayAccount : EntityBase
     public virtual string Type { get; set; }
 
     /// <summary>
-    /// 账号信息 或 二维码内容
+    /// 账号信息（卡号 / 账号 / 收款码文本）。只上传图片时为空字符串。
     /// </summary>
     [SugarColumn(ColumnDescription = "账号信息", Length = 512)]
     [Required, MaxLength(512)]
     public virtual string AccountInfo { get; set; }
+
+    /// <summary>
+    /// 收款码图片的根相对路径，例如 <c>/upload/pay-qr/{id}.png</c>。无图时为空。
+    /// </summary>
+    [SugarColumn(ColumnDescription = "收款码图片", Length = 512, IsNullable = true)]
+    [MaxLength(512)]
+    public virtual string QrImageUrl { get; set; }
 
     /// <summary>
     /// 总额度

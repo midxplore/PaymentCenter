@@ -7,6 +7,16 @@
 using Microsoft.AspNetCore.Http;
 using System.Text.Json;
 
+// ★ 用别名把「审计快照序列化」锁死在 System.Text.Json 上。
+//   本文件用的是 System.Text.Json 的 JsonSerializer（快照 JSON），
+//   而项目里同时存在 Newtonsoft.Json（对外接口的 JsonConverter 特性用它）。
+//   两者都有一个叫 JsonSerializer / JsonSerializerOptions 的类型：一旦将来有人在
+//   GlobalUsings 里加 `global using Newtonsoft.Json;`，下面这些引用会**立刻**变成
+//   CS0104 歧义引用 —— 而报错位置在业务文件里，很容易被误判成「业务代码写错了」。
+//   别名让本文件不受全局 using 影响（实测：加全局 using 后本文件仍可编译）。
+using JsonSerializer = System.Text.Json.JsonSerializer;
+using JsonSerializerOptions = System.Text.Json.JsonSerializerOptions;
+
 namespace Admin.NET.Application;
 
 /// <summary>

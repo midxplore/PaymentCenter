@@ -4,6 +4,8 @@
 //
 // 不得利用本项目从事危害国家安全、扰乱社会秩序、侵犯他人合法权益等法律法规禁止的活动！任何基于本项目二次开发而产生的一切法律纠纷和责任，我们不承担任何责任！
 
+using Newtonsoft.Json;
+
 namespace Admin.NET.Application;
 
 /// <summary>
@@ -11,6 +13,8 @@ namespace Admin.NET.Application;
 /// </summary>
 public class AllocateInput
 {
+    // 金额字段用 decimal（服务端从 JSON 原文精确解析，无浮点损失）；
+    // 对外**写出**一律是十进制字符串，见 AllocateOutput.RequestAmount。
     /// <summary>
     /// 收款类型（字典 pay_account_type 的 Value）
     /// </summary>
@@ -50,17 +54,19 @@ public class AllocateOutput
     public string Type { get; set; }
 
     /// <summary>
-    /// 收款账号 / 二维码内容
+    /// 收款账号 / 收款码文本。只上传了图片时为空字符串。
     /// </summary>
-    /// <remarks>
-    /// 按设计决策（2026-09-16）返回**完整值**：调用方已通过签名鉴权，是可信方，
-    /// 且其唯一目的就是凭该账号完成收款。
-    /// </remarks>
     public string AccountInfo { get; set; }
 
     /// <summary>
-    /// 请求金额
+    /// 收款码图片的根相对路径。无图时为空字符串。接入方用站点根地址拼接后展示。
     /// </summary>
+    public string QrImageUrl { get; set; }
+
+    /// <summary>
+    /// 请求金额，写出为两位小数字符串
+    /// </summary>
+    [JsonConverter(typeof(AmountStringConverter))]
     public decimal RequestAmount { get; set; }
 
     /// <summary>

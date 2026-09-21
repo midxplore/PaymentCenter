@@ -12,7 +12,6 @@
  * Do not edit the class manually.
  */
 
-import { PayOrderStatusEnum } from './pay-order-status-enum';
  /**
  * 订单状态查询输出（§7.3）
  *
@@ -38,10 +37,12 @@ export interface OrderQueryOutput {
     externalNo?: string | null;
 
     /**
-     * @type {PayOrderStatusEnum}
+     * 订单状态名称（Pending / Partial / Completed / Expired）
+     *
+     * @type {string}
      * @memberof OrderQueryOutput
      */
-    status?: PayOrderStatusEnum;
+    status?: string | null;
 
     /**
      * 订单状态中文描述
@@ -57,7 +58,7 @@ export interface OrderQueryOutput {
      * @type {number}
      * @memberof OrderQueryOutput
      */
-    requestAmount?: number;
+    requestAmount?: string;
 
     /**
      * 累计到账金额
@@ -65,7 +66,7 @@ export interface OrderQueryOutput {
      * @type {number}
      * @memberof OrderQueryOutput
      */
-    receivedAmount?: number;
+    receivedAmount?: string;
 
     /**
      * 过期时间

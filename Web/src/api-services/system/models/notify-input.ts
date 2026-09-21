@@ -34,7 +34,7 @@ export interface NotifyInput {
      * @type {number}
      * @memberof NotifyInput
      */
-    amount?: number;
+    amount?: string;
 
     /**
      * 到账时间（通知方传入；为空时取服务端当前时间）

@@ -158,6 +158,9 @@ export const useThemeConfig = defineStore('themeConfig', {
 			idleTimeout: 0,
 			// 上线下线通知
 			onlineNotice: true,
+			// 是否开启手机号登录（本期关闭：入口不渲染，组件与后端接口保留）
+			// 恢复方式：改成 true（若由后端租户配置下发，则在「系统设置 → 信息设置」里开）
+			mobileLogin: false,
 		},
 	}),
 	actions: {

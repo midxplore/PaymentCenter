@@ -2,19 +2,19 @@
   "$schema": "https://gitee.com/dotnetchina/Furion/raw/v4/schemas/v4/furion-schema.json",
 
   "SpecificationDocumentSettings": {
-    "DocumentTitle": "Admin.NET 通用权限开发平台",
+    "DocumentTitle": "支付中心 · 收款账号分配系统",
     "GroupOpenApiInfos": [
       {
         "Group": "Default",
-        "Title": "Admin.NET 通用权限开发平台",
-        "Description": "让 .NET 开发更简单、更通用、更流行。整合最新技术，模块插件式开发，前后端分离，开箱即用。",
+        "Title": "支付中心 · 收款账号分配系统",
+        "Description": "支付中心 · 收款账号分配系统：收款账号池与额度记账、收款订单、到账通知、异常台账与业务审计。",
         "Version": "1.0.0",
         "Order": 1000
       },
       {
         "Group": "All Groups",
         "Title": "所有接口",
-        "Description": "让 .NET 开发更简单、更通用、更流行。整合最新技术，模块插件式开发，前后端分离，开箱即用。",
+        "Description": "支付中心 · 收款账号分配系统：收款账号池与额度记账、收款订单、到账通知、异常台账与业务审计。",
         "Version": "1.0.0",
         "Order": 0
       }

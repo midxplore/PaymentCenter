@@ -34,21 +34,36 @@
 					<el-col :xs="24" :sm="12" :md="12" :lg="12" :xl="12" class="mb20">
 						<el-form-item label="绑定用户" prop="bindUserId" :rules="[{ required: true, message: '绑定用户不能为空', trigger: 'blur' }]">
 							<el-select v-model="state.ruleForm.bindUserId" placeholder="绑定用户" filterable default-first-option style="width: 100%">
-								<el-option v-for="item in state.userData" :key="item.id" :label="`${item.account}【${item.realName}】`" :value="item.id">
+								<!-- ★ 停用的用户标注并禁止选择：绑定到停用用户会建出「签名正确但鉴权必失败」的凭证 -->
+								<el-option
+									v-for="item in state.userData"
+									:key="item.id"
+									:label="`${item.account}【${item.realName}】${item.status === 2 ? '（已停用，不可选）' : ''}`"
+									:value="item.id"
+									:disabled="item.status === 2"
+								>
 									<span style="float: left">{{ item.account }}</span>
 									<span style="float: right; color: var(--el-text-color-secondary)">
-										{{ item.realName }}
+										{{ item.status === 2 ? '已停用' : item.realName }}
 									</span>
 								</el-option>
 							</el-select>
+							<div class="scope-tip">
+								<b>绑定用户必须是启用状态</b>：该凭证的调用会以这个用户的身份记账；
+								用户被停用后，凭证会<b>立即失效</b>（对外报「accessKey 无效」）。
+							</div>
 						</el-form-item>
 					</el-col>
 					<el-col :xs="24" :sm="24" :md="24" :lg="24" :xl="24" class="mb20">
 						<el-form-item label="权限范围" prop="scopes">
-							<el-select v-model="scopeValue" placeholder="留空表示不限制（可自定义输入）" multiple filterable allow-create default-first-option style="width: 100%">
+							<el-select v-model="scopeValue" placeholder="请选择权限范围（留空将拒绝一切调用）" multiple filterable allow-create default-first-option style="width: 100%">
 								<el-option v-for="item in scopeOptions" :key="item.value" :label="item.label" :value="item.value" />
 							</el-select>
-							<div class="scope-tip">仅对开放接口生效；逗号分隔，可自定义。收款匹配填 allocate，到账通知填 notify。</div>
+							<div class="scope-tip">
+								仅对开放接口生效；逗号分隔，可自定义。收款匹配填 <b>allocate</b>，到账通知填 <b>notify</b>。
+								<br />
+								<b>留空 = 拒绝一切调用</b>（不是「不限制」）：未勾选任何范围的凭证，所有开放接口都会被拒绝。
+							</div>
 						</el-form-item>
 					</el-col>
 					<el-col :xs="24" :sm="12" :md="12" :lg="12" :xl="12" class="mb20">

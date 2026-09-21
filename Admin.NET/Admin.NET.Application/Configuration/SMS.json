@@ -29,13 +29,13 @@
       "Templates": [
         {
           "Id": "0",
-          "SignName": "AdminNET 平台",
+          "SignName": "支付中心",
           "TemplateCode": "SMS_xxx",
           "Content": "您的验证码为：${code}，请勿泄露于他人！"
         },
         {
           "Id": "1",
-          "SignName": "AdminNET 平台",
+          "SignName": "支付中心",
           "TemplateCode": "SMS_xxx",
           "Content": "注册成功，感谢您的注册，请妥善保管您的账户信息"
         }
@@ -49,7 +49,7 @@
       "Templates": [
         {
           "Id": "0",
-          "SignName": "AdminNET 平台",
+          "SignName": "支付中心",
           "TemplateCode": "",
           "Content": ""
         }

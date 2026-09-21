@@ -58,7 +58,7 @@ export interface NotifyOutput {
      * @type {number}
      * @memberof NotifyOutput
      */
-    receivedAmount?: number;
+    receivedAmount?: string;
 
     /**
      * 请求金额
@@ -66,5 +66,5 @@ export interface NotifyOutput {
      * @type {number}
      * @memberof NotifyOutput
      */
-    requestAmount?: number;
+    requestAmount?: string;
 }

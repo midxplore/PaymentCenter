@@ -4,6 +4,8 @@
 //
 // 不得利用本项目从事危害国家安全、扰乱社会秩序、侵犯他人合法权益等法律法规禁止的活动！任何基于本项目二次开发而产生的一切法律纠纷和责任，我们不承担任何责任！
 
+using Newtonsoft.Json;
+
 namespace Admin.NET.Application;
 
 /// <summary>
@@ -69,18 +71,20 @@ public class NotifyOutput
     public string OrderNo { get; set; }
 
     /// <summary>
-    /// 当前订单状态中文描述
+    /// 当前订单状态名称
     /// </summary>
     public string OrderStatus { get; set; }
 
     /// <summary>
     /// 累计到账金额
     /// </summary>
+    [JsonConverter(typeof(AmountStringConverter))]
     public decimal ReceivedAmount { get; set; }
 
     /// <summary>
     /// 请求金额
     /// </summary>
+    [JsonConverter(typeof(AmountStringConverter))]
     public decimal RequestAmount { get; set; }
 }
 

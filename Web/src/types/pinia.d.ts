@@ -103,6 +103,7 @@ declare interface ThemeConfigState {
 		carouselFiles?: any[]; // 轮播图集合
 		secondVer?: boolean; // 是否开启二级验证
 		captcha?: boolean; // 是否开启验证码
+		mobileLogin?: boolean; // 是否开启手机号登录（本期关闭；组件与接口保留）
 		forceChangePassword?: boolean; // 是否开启强制修改密码
 		passwordExpirationTime?: number; // 是否验证密码有效期
 		i18NSwitch: boolean; // 是否开启多语言切换

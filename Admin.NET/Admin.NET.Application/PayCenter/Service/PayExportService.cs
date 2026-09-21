@@ -91,6 +91,7 @@ public class PayExportService : IDynamicApiController, ITransient
                 ExternalNo = u.ExternalNo,
                 AccountType = account?.Type,
                 AccountInfo = account?.AccountInfo,
+                QrImageUrl = account?.QrImageUrl ?? "",
                 RequestAmount = u.RequestAmount,
                 ReceivedAmount = u.ReceivedAmount,
                 OutstandingAmount = u.RequestAmount - u.ReceivedAmount,

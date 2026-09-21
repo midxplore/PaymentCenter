@@ -32,7 +32,7 @@
       "Base64ApiKey": "TmtrOEszNEJuQ0NyaWlydGtROFk6SG1RZ0w3YzBTc2lCanJTYlV3aXNzZw==", // 使用Base64ApiKey认证类型时必填
       "Fingerprint": "37:08:6A:C6:06:CC:9A:43:CF:ED:25:A2:1C:A4:69:57:90:31:2C:06:CA:61:56:39:6A:9C:46:11:BD:22:51:DA", // ES使用Https时的证书指纹
       "ServerUris": [ "http://192.168.1.100:9200" ], // 地址
-      "DefaultIndex": "adminnet" // 索引
+      "DefaultIndex": "paymentcenter" // 索引
     },
     "Monitor": {
       "GlobalEnabled": true, // 启用全局拦截日志（建议生产环境关闭，否则对性能有影响）

@@ -27,6 +27,42 @@ public class PayConst
     public const int OrderNoLength = 64;
 
     /// <summary>
+    /// 金额小数位上限（与列精度 <c>numeric(18,2)</c> 一致）
+    /// </summary>
+    /// <remarks>
+    /// ★ <b>必须与 <c>scripts/paycenter-schema.sql</c> 里金额列的 scale 保持一致。</b>
+    /// 本常量用于在**入参侧**拒绝超出精度的金额，而不是让数据库默默四舍五入。
+    /// </remarks>
+    public const int AmountScale = 2;
+
+    /// <summary>
+    /// 金额是否超出允许的小数位
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>为什么要在入参侧拦，而不是交给数据库四舍五入</b>：金额列是 <c>numeric(18,2)</c>，
+    /// 提交 <c>1.005</c> 会被 PostgreSQL 存成 <c>1.01</c>（银行家舍入），
+    /// 但接口响应回显的是未舍入的原值 —— 实测提交 <c>"1.005"</c> 时
+    /// 响应 <c>requestAmount="1.005"</c> 而库里是 <c>1.01</c>。
+    /// 于是接入方按响应记账、平台按库内金额结算，两边静默对不上：
+    /// 既不报错，也没有任何一条日志能指出是哪一笔出的问题。
+    /// 所以在入口直接拒绝，让调用方自己决定如何取整。
+    /// </para>
+    /// <para>
+    /// 实现方式：把小数部分放大到 <c>AmountScale</c> 位后比较是否仍为整数，
+    /// 全程用 <see cref="decimal"/>（不使用 double），避免浮点误差造成误判。
+    /// </para>
+    /// </remarks>
+    /// <param name="amount">待校验金额</param>
+    /// <returns>超出精度返回 true</returns>
+    public static bool HasExcessScale(decimal amount)
+    {
+        var factor = 1m;
+        for (var i = 0; i < AmountScale; i++) factor *= 10m;
+        return decimal.Truncate(amount * factor) != amount * factor;
+    }
+
+    /// <summary>
     /// 收款类型字典编码（SysDictType.Code）
     /// </summary>
     public const string AccountTypeDictCode = "pay_account_type";

@@ -29,12 +29,20 @@ export interface AddPayAccountInput {
     type: string;
 
     /**
-     * 账号信息 或 二维码内容
+     * 账号信息（卡号 / 账号 / 收款码文本）。与收款码图片至少填一个。
      *
      * @type {string}
      * @memberof AddPayAccountInput
      */
-    accountInfo: string;
+    accountInfo?: string | null;
+
+    /**
+     * 收款码图片路径（上传接口返回）。与账号信息至少填一个。
+     *
+     * @type {string}
+     * @memberof AddPayAccountInput
+     */
+    qrImageUrl?: string | null;
 
     /**
      * 总额度

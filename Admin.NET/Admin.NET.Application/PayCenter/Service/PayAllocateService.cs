@@ -14,18 +14,22 @@ namespace Admin.NET.Application;
 /// <remarks>
 /// <para>
 /// 并发安全策略（设计文档 §5.1）：<b>PostgreSQL 原生单语句原子匹配</b> ——
-/// 用 <c>UPDATE ... WHERE Id = (SELECT ... FOR UPDATE SKIP LOCKED LIMIT 1)</c>
+/// 用 <c>UPDATE ... WHERE Id = (SELECT ... FOR UPDATE LIMIT 1)</c>
 /// 把「挑出最佳适配账号」与「抢占其额度」合成一条语句，详见 <see cref="TryLockQuotaAsync"/>。
 /// </para>
 /// <para>
 /// 关键顺序约束：步骤 2 的额度预占<b>在事务外</b>执行（锁定即生效）；
 /// 步骤 3 落订单若失败，<b>必须补偿释放</b>（<see cref="ReleaseQuotaAsync"/>），否则额度会泄漏。
 /// </para>
-/// <para>鉴权说明（F6）：本服务属对外接口族（§7），接口挂骨架内置的签名鉴权
-/// （<c>AuthenticationSchemes = Signature</c>）+ <c>scope=allocate</c> 权限范围校验。</para>
+/// <para>
+/// ★ <b>HTTP 入口已移到 <see cref="PayAllocateController"/>（PayCenter/Controllers/）</b> ——
+/// 对外接口族集中在一个目录，便于一眼看清「哪些接口对系统外开放」。
+/// 本类保留全部业务逻辑，因为单元测试与其它服务是<b>直接调用</b>这些方法的。
+/// 因此本类<b>不再实现</b> <see cref="IDynamicApiController"/>：服务里已无 HTTP 端点，
+/// 若继续实现该接口，本类的 public 方法会被重新推导成路由（含 <c>[NonAction]</c> 的辅助方法）。
+/// </para>
 /// </remarks>
-[ApiDescriptionSettings(Name = "pay", Order = 401, Description = "收款匹配")]
-public class PayAllocateService : IDynamicApiController, ITransient
+public class PayAllocateService : ITransient
 {
     private readonly SqlSugarRepository<PayAccount> _payAccountRep;
     private readonly SqlSugarRepository<PayOrder> _payOrderRep;
@@ -62,20 +66,27 @@ public class PayAllocateService : IDynamicApiController, ITransient
     /// 查询匹配收款账号（F2）
     /// </summary>
     /// <remarks>
-    /// 流程见设计文档 §5.1：幂等前置检查 → 循环 CAS 预占额度 → 事务内落订单与事件流水。
-    /// 无可用账号时返回 P1001 且<b>不生成订单</b>（F2.5）。
+    /// <para>
+    /// 流程见设计文档 §5.1：幂等前置检查 → 单语句原子预占额度 → 事务内落订单与事件流水。
+    /// 无可用账号时返回 API_ACCOUNT_UNAVAILABLE 且<b>不生成订单</b>（F2.5）。
+    /// </para>
+    /// <para>
+    /// ★ <b>HTTP 入口在 <see cref="PayAllocateController.Allocate"/></b>（挂签名鉴权 + scope=allocate）；
+    /// 本方法是被直接调用的业务实现（单元测试也直接调它），因此不挂任何 HTTP/鉴权特性。
+    /// </para>
     /// </remarks>
     /// <param name="input"></param>
     /// <returns></returns>
-    [ApiDescriptionSettings(Name = "Allocate"), HttpPost]
-    [DisplayName("查询匹配收款账号")]
-    [Authorize(AuthenticationSchemes = SignatureAuthenticationDefaults.AuthenticationScheme)]
-    [PayScope(PayConst.ScopeAllocate)]
+    [NonAction]
     public async Task<AllocateOutput> Allocate(AllocateInput input)
     {
         var type = input.Type?.Trim();
-        if (string.IsNullOrWhiteSpace(type)) throw Oops.Oh(ErrorCodeEnum.P1001);
-        if (input.Amount <= 0) throw Oops.Oh(ErrorCodeEnum.P1003);
+        if (string.IsNullOrWhiteSpace(type)) throw Oops.Oh(ErrorCodeEnum.API_ACCOUNT_UNAVAILABLE);
+        if (input.Amount <= 0) throw Oops.Oh(ErrorCodeEnum.API_AMOUNT_INVALID, "必须大于 0");
+        // ★ 超出列精度（numeric(18,2)）的金额必须在这里拒绝，不能交给数据库四舍五入：
+        //   否则响应回显未舍入的原值、库里存的是舍入值，两边静默对不上（见 PayConst.HasExcessScale）。
+        if (PayConst.HasExcessScale(input.Amount))
+            throw Oops.Oh(ErrorCodeEnum.API_AMOUNT_INVALID, $"小数位不能超过 {PayConst.AmountScale} 位");
 
         var externalNo = string.IsNullOrWhiteSpace(input.ExternalNo) ? null : input.ExternalNo.Trim();
         var clientId = await ResolveRequiredClientIdAsync();
@@ -91,6 +102,12 @@ public class PayAllocateService : IDynamicApiController, ITransient
             var existing = await FindByIdempotencyKeyAsync(clientId, externalNo);
             if (existing != null)
             {
+                // ★ 幂等命中前先校验「本次参数与原订单是否一致」（F2.6 冲突检测）。
+                //   缺少这一步时，接入方改了金额重试会**静默拿到原金额的订单**：
+                //   它以为按新金额下过单，实际收款账号是按旧金额分配的 —— 与「钱进错账户」
+                //   同类的静默失效（不报错、难以发现），必须显式报冲突。
+                await EnsureIdempotentConsistentAsync(existing, type, input.Amount);
+
                 // 幂等命中也要留痕：它是「接入方在重试」的直接证据，
                 // 出现异常高频时可以据此定位「接入方把幂等接口当轮询用了」。
                 await _payAuditService.WriteOpenApiAsync(PayAuditActionEnum.ApiCall,
@@ -104,7 +121,7 @@ public class PayAllocateService : IDynamicApiController, ITransient
         // ── 步骤 2：单语句原子匹配 + 预占（事务外）─────────────────────
         var lockedAccountId = await TryLockQuotaAsync(type, input.Amount);
         // 步骤 4：无可用候选 → 返回无可用账号，不生成订单（F2.5）
-        if (lockedAccountId == null) throw Oops.Oh(ErrorCodeEnum.P1001);
+        if (lockedAccountId == null) throw Oops.Oh(ErrorCodeEnum.API_ACCOUNT_UNAVAILABLE);
 
         // ── 步骤 3：事务内生成订单 + 事件流水 ─────────────────────────
         PayOrder order;
@@ -122,7 +139,13 @@ public class PayAllocateService : IDynamicApiController, ITransient
             if (externalNo != null)
             {
                 var existing = await FindByIdempotencyKeyAsync(clientId, externalNo);
-                if (existing != null) return await BuildOutputAsync(existing, type, true);
+                if (existing != null)
+                {
+                    // 并发路径同样要查参数一致性：两笔并发请求可能带着不同金额进来，
+                    // 抢输的那笔若不校验就会把「另一笔参数的订单」当成自己的成功结果返回。
+                    await EnsureIdempotentConsistentAsync(existing, type, input.Amount);
+                    return await BuildOutputAsync(existing, type, true);
+                }
             }
             throw;
         }
@@ -156,6 +179,51 @@ public class PayAllocateService : IDynamicApiController, ITransient
     }
 
     /// <summary>
+    /// 校验「同一幂等键的重复请求」其业务参数与原订单是否一致，不一致则报 409 冲突（F2.6）
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>为什么必须报错而不是静默返回原订单</b>：幂等键的语义是「同一笔业务只做一次」。
+    /// 若参数变了还返回原订单，接入方会认为「新金额的单已经下好了」，
+    /// 而实际收款账号是按**旧金额**分配并预占额度的 —— 这既不报错也无法从响应看出，
+    /// 属于本项目最忌讳的静默失效类型（金额对不上、额度占用不对，事后对账才发现）。
+    /// </para>
+    /// <para>
+    /// <b>比较哪些字段</b>：金额（<see cref="PayOrder.RequestAmount"/>）与收款类型。
+    /// 类型不是订单上的列，而是由所分配账号的 <c>Type</c> 推导（订单只存 <c>AccountId</c>），
+    /// 因此类型比较需要读一次账号；账号已被删除时无法还原原类型，此时只比金额。
+    /// </para>
+    /// <para>
+    /// <b>状态码</b>：显式置 <c>409</c>，与「资源状态冲突」的语义一致
+    /// （接入方据此可区分「参数错了」(400) 与「单号已被占用且参数不同」(409)）。
+    /// HTTP 传输层仍为 200，接入方须以 JSON <c>code</c> 判断，见接口文档 §3。
+    /// </para>
+    /// </remarks>
+    /// <param name="existing">已存在的订单</param>
+    /// <param name="type">本次请求的收款类型</param>
+    /// <param name="amount">本次请求的金额</param>
+    /// <returns></returns>
+    /// <exception cref="Exception">参数与原订单不一致时抛出 409</exception>
+    [NonAction]
+    public async Task EnsureIdempotentConsistentAsync(PayOrder existing, string type, decimal amount)
+    {
+        var account = await _payAccountRep.GetByIdAsync(existing.AccountId);
+        var existingType = account?.Type;
+
+        var amountSame = existing.RequestAmount == amount;
+        // 账号已被删除 → 无法还原原类型，只比金额（不因为「取不到」而误报冲突）
+        var typeSame = existingType == null || string.Equals(existingType, type, StringComparison.Ordinal);
+
+        if (amountSame && typeSame) return;
+
+        var detail = $"原订单 金额={existing.RequestAmount:0.##}"
+            + (existingType == null ? "（原账号已删除，类型不可考）" : $" 类型={existingType}")
+            + $"；本次 金额={amount:0.##} 类型={type}";
+
+        throw Oops.Oh(ErrorCodeEnum.API_ORDER_REQUEST_CONFLICT, detail).StatusCode(409);
+    }
+
+    /// <summary>
     /// 查询收款订单状态（§7.3）
     /// </summary>
     /// <remarks>
@@ -166,24 +234,27 @@ public class PayAllocateService : IDynamicApiController, ITransient
     /// （返回体含对方的 <c>ExternalNo</c> 与累计到账金额）。
     /// </para>
     /// <para>
-    /// 「不存在」与「不是你的」统一返回 <see cref="ErrorCodeEnum.P1004"/>：
+    /// 「不存在」与「不是你的」统一返回 <see cref="ErrorCodeEnum.API_ORDER_NOT_FOUND"/>：
     /// 若对后者返回一个不同的错误，等于提供了一个「订单号是否存在」的探测接口。
     /// </para>
     /// </remarks>
     /// <param name="orderNo">系统订单号</param>
     /// <returns></returns>
-    [DisplayName("查询收款订单状态")]
-    [Authorize(AuthenticationSchemes = SignatureAuthenticationDefaults.AuthenticationScheme)]
-    [PayScope(PayConst.ScopeAllocate)]
+    /// <remarks>
+    /// ★ HTTP 入口在 <see cref="PayAllocateController.GetStatus"/>（挂签名鉴权 + scope=allocate）；
+    /// 归属校验（<c>WHERE OrderNo = ? AND ClientId = ?</c>）留在本方法里，
+    /// 「查无此单」与「不是你的单」同返 <c>API_ORDER_NOT_FOUND</c>。
+    /// </remarks>
+    [NonAction]
     public async Task<OrderQueryOutput> GetStatus([FromQuery] string orderNo)
     {
-        if (string.IsNullOrWhiteSpace(orderNo)) throw Oops.Oh(ErrorCodeEnum.P1004);
+        if (string.IsNullOrWhiteSpace(orderNo)) throw Oops.Oh(ErrorCodeEnum.API_ORDER_NOT_FOUND);
 
         var clientId = await ResolveRequiredClientIdAsync();
 
         var order = await _payOrderRep.AsQueryable()
             .Where(u => u.OrderNo == orderNo.Trim() && u.ClientId == clientId)
-            .FirstAsync() ?? throw Oops.Oh(ErrorCodeEnum.P1004);
+            .FirstAsync() ?? throw Oops.Oh(ErrorCodeEnum.API_ORDER_NOT_FOUND);
 
         return new OrderQueryOutput
         {
@@ -212,14 +283,14 @@ public class PayAllocateService : IDynamicApiController, ITransient
     /// 为什么不用「先 SELECT 候选、再逐个 CAS 条件更新」：那种写法在 SELECT 与 UPDATE 之间存在时间窗口，
     /// 并发请求会挑中同一行、抢输后重试，于是
     /// ①「最佳适配」从硬保证退化为尽力而为（最终落到的可能不是最优账号）；
-    /// ② 候选批次耗尽时会误报 P1001「无可用收款账号」，即使池中仍有额度。
+    /// ② 候选批次耗尽时会误报 API_ACCOUNT_UNAVAILABLE「无可用收款账号」，即使池中仍有额度。
     /// 单语句原子匹配把「选行」和「加锁」放进同一条语句，窗口与重试都不存在了。
     /// </para>
     /// <para>
     /// ★ <b>必须是阻塞式 <c>FOR UPDATE</c>，不能用 <c>FOR UPDATE SKIP LOCKED</c></b>——
     /// 后者只在「同一 Type 下有多个候选账号」时才成立；一旦该 Type 只有<b>一个</b>可用账号
     /// （商户单账号是常态），并发请求会把这个唯一候选跳过，子查询返回空集，
-    /// 调用方收到<b>虚假的</b> <c>P1001「无可用收款账号」</c>，而额度其实还有。
+    /// 调用方收到<b>虚假的</b> <c>API_ACCOUNT_UNAVAILABLE「无可用收款账号」</c>，而额度其实还有。
     /// 实测：单账号、额度 1000（容量 33 笔）、10 并发 → 只成功 2 笔。
     /// 详见 <see cref="TryLockQuotaAsync"/> 的备注。
     /// </para>
@@ -255,7 +326,7 @@ public class PayAllocateService : IDynamicApiController, ITransient
         //   5) ★ 用 FOR UPDATE，**不要**用 FOR UPDATE SKIP LOCKED。
         //      SKIP LOCKED 会「跳过别人锁住的行去选下一个候选」，但本查询是 LIMIT 1
         //      的最佳适配——同 Type 下只有一个可用账号时（常态），
-        //      并发请求会把唯一候选跳过 → 子查询空集 → 误报 P1001「无可用收款账号」，
+        //      并发请求会把唯一候选跳过 → 子查询空集 → 误报 API_ACCOUNT_UNAVAILABLE「无可用收款账号」，
         //      而额度其实还有，等于丢单。阻塞式 FOR UPDATE 让后续请求排队，
         //      等前一条语句提交后在外层 WHERE 上重新求值，结果才正确。
         //      等待时间有界：本方法在事务外执行，锁只持有这一条语句的执行时间。
@@ -455,7 +526,8 @@ RETURNING Id;";
         {
             OrderNo = order.OrderNo,
             Type = account?.Type ?? type,
-            AccountInfo = account?.AccountInfo,
+            AccountInfo = account?.AccountInfo ?? "",
+            QrImageUrl = string.IsNullOrEmpty(account?.QrImageUrl) ? "" : account.QrImageUrl,
             RequestAmount = order.RequestAmount,
             ExpireTime = order.ExpireTime,
             IdempotentHit = idempotentHit

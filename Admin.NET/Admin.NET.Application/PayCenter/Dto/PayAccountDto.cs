@@ -35,11 +35,16 @@ public class AddPayAccountInput
     public string Type { get; set; }
 
     /// <summary>
-    /// 账号信息 或 二维码内容
+    /// 账号信息（卡号 / 账号 / 收款码文本）。与 <see cref="QrImageUrl"/> 至少填一个。
     /// </summary>
-    [Required(ErrorMessage = "账号信息不能为空")]
     [MaxLength(512, ErrorMessage = "账号信息长度不能超过512")]
     public string AccountInfo { get; set; }
+
+    /// <summary>
+    /// 收款码图片路径（由上传接口返回）。与 <see cref="AccountInfo"/> 至少填一个。
+    /// </summary>
+    [MaxLength(512, ErrorMessage = "收款码图片地址长度不能超过512")]
+    public string QrImageUrl { get; set; }
 
     /// <summary>
     /// 总额度
@@ -55,10 +60,22 @@ public class AddPayAccountInput
 }
 
 /// <summary>
-/// 编辑收款账号输入（F1.2：仅支持修改备注、状态）
+/// 编辑收款账号（账号文本、收款码图片、备注、状态）
 /// </summary>
 public class UpdatePayAccountInput : BaseIdInput
 {
+    /// <summary>
+    /// 账号信息。null 不修改，空字符串清除；与 <see cref="QrImageUrl"/> 至少填一个。
+    /// </summary>
+    [MaxLength(512, ErrorMessage = "账号信息长度不能超过512")]
+    public string AccountInfo { get; set; }
+
+    /// <summary>
+    /// 收款码图片路径。null 不修改，空字符串清除。
+    /// </summary>
+    [MaxLength(512, ErrorMessage = "收款码图片地址长度不能超过512")]
+    public string QrImageUrl { get; set; }
+
     /// <summary>
     /// 备注
     /// </summary>
@@ -113,6 +130,11 @@ public class PayAccountOutput
     /// 账号信息（前后台均不脱敏，见设计决策）
     /// </summary>
     public string AccountInfo { get; set; }
+
+    /// <summary>
+    /// 收款码图片的根相对路径。无图时为空字符串。
+    /// </summary>
+    public string QrImageUrl { get; set; }
 
     /// <summary>
     /// 总额度

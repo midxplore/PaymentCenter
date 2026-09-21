@@ -59,7 +59,7 @@
 	</div>
 </template>
 
-<!-- 开放接口 -->
+<!-- 开放接口（平台管理 → 开放接口）-->
 <script lang="ts" setup name="sysOpenAccess">
 import { onMounted, reactive, ref } from 'vue';
 import { ElMessageBox, ElMessage } from 'element-plus';
@@ -87,7 +87,8 @@ const state = reactive({
 	},
 	localPageParam: {
 		pageSize: 50 as number,
-		defaultSort: { field: 'orderNo', order: 'asc', descStr: 'desc' },
+		// 按 Id 倒序：OpenAccessOutput 上没有 orderNo 字段（原值是从其它页面复制来的，排序实际无效）
+		defaultSort: { field: 'id', order: 'desc', descStr: 'desc' },
 	},
 	title: '',
 });
@@ -98,7 +99,7 @@ const localPageParamKey = 'localPageParam:sysOpenAccess';
 const options = useVxeTable<OpenAccessOutput>(
 	{
 		id: 'sysOpenAccess',
-		name: '开发接口身份',
+		name: '开放接口身份',
 		columns: [
 			// { type: 'checkbox', width: 40, fixed: 'left' },
 			{ field: 'seq', type: 'seq', title: '序号', width: 60, fixed: 'left' },

@@ -17,7 +17,12 @@
 					<el-descriptions-item label="订单状态">
 						<el-tag :type="statusTagType(state.detail.order?.status)">{{ state.detail.order?.statusText }}</el-tag>
 					</el-descriptions-item>
-					<el-descriptions-item label="收款账号">{{ state.detail.order?.accountInfo || '-' }}</el-descriptions-item>
+					<el-descriptions-item label="收款账号">
+						<div class="account-cell">
+							<el-image v-if="state.detail.order?.qrImageUrl" :src="state.detail.order.qrImageUrl" :preview-src-list="[state.detail.order.qrImageUrl]" fit="contain" class="qr-preview" preview-teleported />
+							<span>{{ state.detail.order?.accountInfo || (state.detail.order?.qrImageUrl ? '收款码' : '-') }}</span>
+						</div>
+					</el-descriptions-item>
 					<el-descriptions-item label="收款类型">{{ state.detail.order?.accountType || '-' }}</el-descriptions-item>
 					<el-descriptions-item label="请求金额">{{ money(state.detail.order?.requestAmount) }}</el-descriptions-item>
 					<el-descriptions-item label="累计到账">{{ money(state.detail.order?.receivedAmount) }}</el-descriptions-item>
@@ -186,5 +191,15 @@ defineExpose({ openDialog });
 	margin-left: 4px;
 	font-size: 12px;
 	color: var(--el-color-danger);
+}
+.account-cell {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.qr-preview {
+	width: 72px;
+	height: 72px;
+	flex: none;
 }
 </style>

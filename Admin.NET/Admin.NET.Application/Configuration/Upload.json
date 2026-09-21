@@ -1,10 +1,10 @@
-﻿{
+{
   "$schema": "https://gitee.com/dotnetchina/Furion/raw/v4/schemas/v4/furion-schema.json",
 
   "Upload": {
     "Path": "upload/{yyyy}/{MM}/{dd}", // 文件上传目录
     "MaxSize": 51200, // 文件最大限制KB：1024*50
-    "ContentType": [ "image/jpg", "image/png", "image/jpeg", "image/gif", "image/bmp", "image/svg+xml", "text/plain", "text/xml", "application/pdf", "application/msword", "application/vnd.ms-excel", "application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "video/mp4", "application/wps-office.docx", "application/wps-office.xlsx", "application/wps-office.pptx", "application/vnd.android.package-archive", "application/octet-stream" ],
+    "ContentType": [ "image/jpg", "image/png", "image/jpeg", "image/gif", "image/bmp", "image/webp", "image/svg+xml", "text/plain", "text/xml", "application/pdf", "application/msword", "application/vnd.ms-excel", "application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "video/mp4", "application/wps-office.docx", "application/wps-office.xlsx", "application/wps-office.pptx", "application/vnd.android.package-archive", "application/octet-stream" ],
     "EnableMd5": false, // 启用文件MDF5验证-防止重复上传
     "EnableSaveDb": false // 启用文件存储到数据库
   },
@@ -17,7 +17,7 @@
     "SecretKey": "",
     "IsEnableHttps": false, // 是否启用HTTPS
     "IsEnableCache": true, // 是否启用缓存
-    "Bucket": "admin.net",
+    "Bucket": "paymentcenter",
     "CustomHost": "" // 自定义Host：拼接外链的Host，若空则使用Endpoint拼接
   },
   "SSHProvider": {

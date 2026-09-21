@@ -10,6 +10,6 @@
     "DefaultToEmail": "xxx@qq.com", // 默认接收人邮箱
     "UserName": "xxx@163.com", // 邮箱账号
     "Password": "", // 邮箱授权码
-    "DefaultFromName": "Admin.NET 通用权限开发平台" // 默认邮件标题
+    "DefaultFromName": "支付中心" // 默认发件人显示名
   }
 }

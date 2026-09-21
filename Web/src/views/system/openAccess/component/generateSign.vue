@@ -16,7 +16,11 @@
 					</el-col>
 					<el-col :xs="24" :sm="24" :md="24" :lg="24" :xl="24" class="mb20">
 						<el-form-item label="密钥" prop="accessSecret">
-							<el-input v-model="state.ruleForm.accessSecret" placeholder="密钥" readonly> </el-input>
+							<el-input v-model="state.ruleForm.accessSecret" placeholder="请填写创建凭证时保存的完整密钥" clearable />
+							<div class="scope-tip">
+								列表页只回显掩码（形如 <b>abcd****wxyz</b>），掩码<b>不能</b>用来算签名。
+								此处必须填写创建凭证时保存下来的完整密钥；若已丢失，请到「编辑」里点「生成密钥」重新生成（旧密钥随即失效）。
+							</div>
 						</el-form-item>
 					</el-col>
 					<el-col :xs="24" :sm="24" :md="24" :lg="24" :xl="24" class="mb20">
@@ -85,10 +89,11 @@ const state = reactive({
 	sign: '', // 生成的签名
 });
 
-watch([() => state.ruleForm.method, () => state.ruleForm.url, () => state.ruleForm.timestamp, () => state.ruleForm.nonce], () => {
+watch([() => state.ruleForm.method, () => state.ruleForm.accessSecret, () => state.ruleForm.url, () => state.ruleForm.timestamp, () => state.ruleForm.nonce], () => {
 	if (
 		state.ruleForm.method == undefined ||
 		state.ruleForm.method == null ||
+		!state.ruleForm.accessSecret || // 密钥为空不生成（空密钥的签名毫无意义，只会误导）
 		!state.ruleForm.url ||
 		!state.ruleForm.timestamp ||
 		!state.ruleForm.nonce ||
@@ -103,9 +108,12 @@ watch([() => state.ruleForm.method, () => state.ruleForm.url, () => state.ruleFo
 
 // 打开弹窗
 const openDialog = (row: any) => {
+	// ★ 密钥**不预填**列表回显的掩码：掩码算出来的签名一定是错的，
+	//   预填会诱导用户直接点「生成」，拿到一个看起来正常但无法通过校验的签名。
+	//   这里留空，由使用者填入创建时保存的完整密钥（后端也会拒绝掩码，见 GenerateSignature）。
 	state.ruleForm = {
 		accessKey: row?.accessKey,
-		accessSecret: row?.accessSecret,
+		accessSecret: '',
 		method: HttpMethodEnum.NUMBER_0,
 		url: '',
 		timestamp: undefined!,
@@ -147,6 +155,13 @@ defineExpose({ openDialog });
 </script>
 
 <style lang="scss" scoped>
+.scope-tip {
+	margin-top: 4px;
+	font-size: 12px;
+	line-height: 1.4;
+	color: var(--el-text-color-secondary);
+}
+
 :deep(.input-with-select) {
 	.el-input-group__prepend {
 		background-color: var(--el-fill-color-blank);

@@ -16,11 +16,16 @@ namespace Admin.NET.Application;
 /// <para>
 /// 并发安全要点：<b>所有状态变更都带条件守卫</b>，保证与过期任务（F3.2）、其他到账通知并发时不出错。
 /// </para>
-/// <para>鉴权说明（F6）：本服务属对外接口族（§7.2），接口挂骨架内置的签名鉴权
-/// （<c>AuthenticationSchemes = Signature</c>）+ <c>scope=notify</c> 权限范围校验。</para>
+/// <para>
+/// ★ <b>HTTP 入口已移到 <see cref="PayNotifyController"/>（PayCenter/Controllers/）</b>：
+/// 对外接口族集中在一个目录。本类保留全部业务逻辑，因为人工关联
+/// （<see cref="PayAbnormalService"/>）与单元测试是<b>直接调用</b>
+/// <see cref="ApplyReceiptCoreAsync"/> / <see cref="Notify"/> 的。
+/// 因此本类<b>不再实现</b> <see cref="IDynamicApiController"/>：服务里已无 HTTP 端点，
+/// 若继续实现该接口，本类的 public 方法会被重新推导成路由。
+/// </para>
 /// </remarks>
-[ApiDescriptionSettings(Name = "pay", Order = 402, Description = "到账通知")]
-public class PayNotifyService : IDynamicApiController, ITransient
+public class PayNotifyService : ITransient
 {
     private readonly SqlSugarRepository<PayOrder> _payOrderRep;
     private readonly SqlSugarRepository<PayOrderEvent> _payOrderEventRep;
@@ -59,19 +64,21 @@ public class PayNotifyService : IDynamicApiController, ITransient
     /// <remarks>
     /// 单事务内完成。去重、累加、状态流转、额度结转、事件流水要么全成、要么全不成，
     /// 避免出现「凭证号已占位但金额没累加」这种导致资金永久丢失的中间态。
+    /// ★ HTTP 入口在 <see cref="PayNotifyController.Notify"/>（挂签名鉴权 + scope=notify）。
     /// </remarks>
     /// <param name="input"></param>
     /// <returns></returns>
-    [ApiDescriptionSettings(Name = "Notify"), HttpPost]
-    [DisplayName("到账通知")]
-    [Authorize(AuthenticationSchemes = SignatureAuthenticationDefaults.AuthenticationScheme)]
-    [PayScope(PayConst.ScopeNotify)]
+    [NonAction]
     public async Task<NotifyOutput> Notify(NotifyInput input)
     {
         var orderNo = input.OrderNo?.Trim();
         var voucherNo = input.VoucherNo?.Trim();
         if (string.IsNullOrWhiteSpace(orderNo) || string.IsNullOrWhiteSpace(voucherNo) || input.Amount <= 0)
-            throw Oops.Oh(ErrorCodeEnum.P1015);
+            throw Oops.Oh(ErrorCodeEnum.API_NOTIFY_INVALID);
+        // ★ 同 allocate：超出列精度的到账金额会静默改变累计额（额度结转按实际到账算），
+        //   必须在入口拒绝，见 PayConst.HasExcessScale。
+        if (PayConst.HasExcessScale(input.Amount))
+            throw Oops.Oh(ErrorCodeEnum.API_AMOUNT_INVALID, $"小数位不能超过 {PayConst.AmountScale} 位");
 
         var notifyTime = input.NotifyTime ?? DateTime.Now;
         // 通知方身份：既是 (ClientId, VoucherNo) 去重键的一半，也是审计主体。
@@ -186,7 +193,8 @@ public class PayNotifyService : IDynamicApiController, ITransient
                 Result = PayConst.NotifyResultAccepted,
                 ResultText = applied.Status == PayOrderStatusEnum.Completed ? "订单已完成" : "已受理，部分到账",
                 OrderNo = applied.OrderNo,
-                OrderStatus = applied.Status.GetDescription(),
+                // 与 BuildOutput 同一口径：对外回枚举名称而非中文描述
+                OrderStatus = applied.Status.ToString(),
                 ReceivedAmount = applied.ReceivedAmount,
                 RequestAmount = applied.RequestAmount
             };
@@ -408,7 +416,10 @@ public class PayNotifyService : IDynamicApiController, ITransient
             Result = result,
             ResultText = resultText,
             OrderNo = order?.OrderNo,
-            OrderStatus = order == null ? null : order.Status.GetDescription(),
+            // ★ 对外回**枚举名称**（Pending/Partial/Completed/Expired），不是中文描述：
+            //   中文属于展示层，接入方要的是可稳定判定的机器值。
+            //   与 /api/pay/status 的 status 字段口径一致（见接口文档 §6.2）。
+            OrderStatus = order == null ? null : order.Status.ToString(),
             ReceivedAmount = order?.ReceivedAmount ?? 0m,
             RequestAmount = order?.RequestAmount ?? 0m
         };

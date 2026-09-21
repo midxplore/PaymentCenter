@@ -9,8 +9,8 @@
 
   // RabbitMQ 配置
   "RabbitMQ": {
-    "UserName": "adminnet",
-    "Password": "adminnet++123456",
+    "UserName": "paymentcenter",
+    "Password": "b2dRlKONOUAPkXA_",
     "HostName": "127.0.0.1",
     "Port": 5672,
     "VirtualHost": "/"

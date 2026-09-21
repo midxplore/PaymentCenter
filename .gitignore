@@ -28,7 +28,7 @@ bin-release/
 /Admin.NET/Admin.NET.Web.Entry/wwwroot/is-cache
 /Admin.NET/Admin.NET.Web.Core/Admin.NET.Web.Core.csproj.user
 /Admin.NET/Admin.NET.Web.Entry/Admin.NET.Web.Entry.csproj.user
-/Admin.NET/Admin.NET.Web.Entry/Properties/PublishProfiles
+/Admin.NET/Admin.NET.Web.Entry/Properties/PublishProfiles/*.pubxml.user
 /Admin.NET/Admin.NET.Web.Entry/publish
 /Admin.NET/Admin.NET.Web.Entry/logs
 /Admin.NET/Admin.NET.Web.Entry/Admin.NET.db
@@ -59,6 +59,22 @@ node_modules/
 /Admin.NET/Admin.NET-City.db.7z
 /.dev-backend.pid
 
+# 本地开发库连接串（含真实口令）—— 与基线 Database.json 分离，**不入库**。
+# 基线 Database.json 是占位地址（随发布分发）；这份才是本地开发真正生效的配置。
+# 新克隆的仓库请复制同目录的 Database.Development.json.example 后填自己的库。
+# 为什么必须忽略：历史上它被跟踪过，真实口令因此进了 git 历史（N1）——
+# 分层的目的正是把真实地址从「可发布文件」里赶出去，入库就等于把这一步白做。
+/Admin.NET/Admin.NET.Application/Configuration/Database.Development.json
+
 # Python 字节码缓存：守卫 / 回归探针每跑一次就会被重写，入库即污染每次 review 的 diff
 __pycache__/
 *.pyc
+
+# 项目文档只留本地查阅，不入库（含需求/设计/部署/验收/API 说明）
+/doc/
+
+# 本地脚本 / 回归探针 / schema SQL 只留本机，不入库（避免仓库 diff 被运维脚本淹没）
+/scripts/
+
+# Rider / ReSharper 用户级设置
+*.DotSettings.user

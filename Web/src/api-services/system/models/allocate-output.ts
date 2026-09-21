@@ -45,12 +45,20 @@ export interface AllocateOutput {
     accountInfo?: string | null;
 
     /**
+     * 收款码图片的根相对路径。无图时为空字符串。
+     *
+     * @type {string}
+     * @memberof AllocateOutput
+     */
+    qrImageUrl?: string | null;
+
+    /**
      * 请求金额
      *
      * @type {number}
      * @memberof AllocateOutput
      */
-    requestAmount?: number;
+    requestAmount?: string;
 
     /**
      * 过期时间

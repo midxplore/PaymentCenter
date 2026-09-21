@@ -46,6 +46,14 @@ export interface PayAccountOutput {
     accountInfo?: string | null;
 
     /**
+     * 收款码图片的根相对路径。无图时为空字符串。
+     *
+     * @type {string}
+     * @memberof PayAccountOutput
+     */
+    qrImageUrl?: string | null;
+
+    /**
      * 总额度
      *
      * @type {number}

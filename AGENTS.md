@@ -8,7 +8,10 @@
 
 - **是什么**：Admin.NET.Pro 裁剪版（.NET 8 + Furion.Pure 4.9.7.221 + SqlSugar），只保留一个业务模块 **PayCenter**（需求 F1~F7）。前端 Vue3 + Element Plus + Vite 7。
 - **后端**：`Admin.NET/Admin.NET.sln`（Core / Application / Web.Core / Web.Entry / Test）。
-  - 业务代码只放 `Admin.NET.Application/PayCenter/`（Entity / Dto / Service / Auth / Job / SeedData / Const / Enum）。
+  - 业务代码只放 `Admin.NET.Application/PayCenter/`（Controllers / Entity / Dto / Service / Auth / Job / SeedData / Const / Enum）。
+  - ★ **`PayCenter/Controllers/` 只放对外接口**（`/api/pay/*`，签名鉴权 + `[PayScope]`）；后台管理接口留在各自的 `*Service`（JWT + RBAC）。
+    控制器**只做 HTTP 入口**（鉴权特性 + 绑定 + 委托），业务逻辑留在 Service —— 单测与 `PayAbnormalService` 是**直接调用服务方法**的，
+    把逻辑搬进控制器会让那些路径失去覆盖。因此 `PayAllocateService` / `PayNotifyService` **不实现** `IDynamicApiController`（守卫 §7c 会断言这一点）。
   - 裁剪现状：Application 层只剩框架 `Service/App/Auth` + PayCenter；**不要新增项目**，不要假设 Admin.NET 的示例业务模块还在。Core 是完整框架（Auth/Cache/Job/Menu/OpenAccess/Tenant/User…），可复用。
 - **前端**：`Web/src/views/` 同时有框架页面（`system/*`、`login`、`home`、`about`）与本项目页面（`paycenter/*`）。框架页面基本不改；`src/views/system/openAccess/` 是本项目改造过的（密钥脱敏 / 停用 / scopes）。
 - **脚本**：`scripts/` = 本地环境 + HTTP 回归 + schema 契约/守卫；`doc/` = 需求/设计/验收/本地环境；`.workbuddy-ai/memory/` = 项目长期记忆。
@@ -50,18 +53,26 @@
 
 ### 额度 / 并发
 - **数值比较一律「列在左」**：`u.Total >= u.Used + u.Locked + amount`（历史 SQLite 亲和性坑；PG 下不再触发，但保留写法）。
-- **额度预占必须阻塞式 `FOR UPDATE`，禁用 `SKIP LOCKED`**。`LIMIT 1` + `SKIP LOCKED` 会把「等不到锁」错报成 `P1001 无可用收款账号` → 三方不重试 → **丢单**（实测 10 并发只成功 2 笔）。等到锁后外层 WHERE 重新求值额度。
+- **额度预占必须阻塞式 `FOR UPDATE`，禁用 `SKIP LOCKED`**。`LIMIT 1` + `SKIP LOCKED` 会把「等不到锁」错报成 `API_ACCOUNT_UNAVAILABLE 无可用收款账号` → 三方不重试 → **丢单**（实测 10 并发只成功 2 笔）。等到锁后外层 WHERE 重新求值额度。
 - 额度语义：`剩余 = Total − Used − Locked`（**不落库**）；锁定按**请求金额**释放，已用按**实际到账**累加。
 - **过期与到账的竞态：先条件抢占订单状态，再读到账金额**（顺序反了会按偏小旧值结转 → 账实不符）。
 
 ### 鉴权 / 审计
 - 调用方身份只有一个来源 `PayCallerContext.RequireClientId`，**禁止 `?? 0` 兜底**（退化成 0 会让所有接入方共享去重命名空间 → A 的凭证号静默去重掉 B 的到账通知）。
 - 幂等键唯一索引是 **`(clientid, externalno)` 复合**，查询必须带 `ClientId`（幂等查询只有一处实现）。
-- `notify` 刻意**不**按 ClientId 过滤（渠道不建单）；`allocate` / `status` 必须隔离。`status` 的「查无此单」与「不是你的单」返回同一个 `P1004`。
+- `notify` 刻意**不**按 ClientId 过滤（渠道不建单）；`allocate` / `status` 必须隔离。`status` 的「查无此单」与「不是你的单」返回同一个 `API_ORDER_NOT_FOUND`。
 - 对外路由 `/api/pay/{allocate,notify,status}` 必须 `[Authorize(Signature)] + [PayScope(...)]`；新增 `/api/pay*` 接口忘写 `[PayScope]` 会被 `ScopeUnclassified` fail-closed 拒绝（**不要**改回返回 null）。
 - **密钥出参必须在 getter 层脱敏**（掩码 `****`）；**「掩码 = 不改」**；改 accessKey 要**同时清新旧两个缓存**；停用凭证返回空密钥（与「无效 key」不可区分）。签名比较用 `FixedTimeEquals`。
 - **审计两条线**：认证失败（401 在 MVC 之前，`SysLogOp` 采不到）走 `IOpenAccessAuditSink` → `pay_audit_log(action=ApiAuthFailure)`，**必须吞掉所有异常、只记带 accessKey 的失败、写入前按列宽截断**；资金动作走 `PayAuditService.WriteOpenApiAsync`（**同事务**），只读的 `status` 不审计。
 - `pay_audit_log` / `pay_order_event` **只增不改**，无 update/delete 接口。
+
+### 对外接口契约（改动前必读，`doc/对外接口API文档.md` 与设计文档 §7 必须同步）
+- ★★ **所有响应（含失败）HTTP 传输状态都是 `200`**，真实结果在 JSON `code` 里（认证失败 `code=401`、冲突 `409`、参数错 `400` 全是 HTTP 200，已用 curl 独立验证）。改接口时**不要**试图去调 HTTP 状态码；文档里写「HTTP 401」是错的。
+- ★★ **对外金额一律是十进制字符串，且固定两位小数**（`AmountStringConverter`：`1.2` → `"1.20"`、`100` → `"100.00"`；入参兼容数字）。格式串由 `PayConst.AmountScale` 推导，**不要写死字面量**。JSON 数字会被接入方用双精度浮点解析（仅 15~17 位有效数字）而**静默失真**；固定位数则是为了对账时能逐笔文本比对。
+- ★★ **对外枚举一律回名称**（`EnumNameConverter`，`status`/`orderStatus` → `Pending/Partial/Completed/Expired`）。数字仅供后台管理界面用。**转换器只挂对外 DTO，不挂后台 DTO**（后者与前端下拉契约绑定）。
+- ★★ **超精度金额必须拒绝，不能交给数据库舍入**（`PayConst.HasExcessScale`，`AmountScale=2` 与列 scale 联动）。否则提交 `1.005` 存成 `1.01` 而**响应回显 `1.005`** → 两边金额静默对不上（已实测）。
+- ★★ **幂等冲突必须显式报 409**（`EnsureIdempotentConsistentAsync` 比对 `type`+`amount`）。只查 `externalNo` 存在性会让「改了金额重试」静默拿到旧金额订单 —— 与「钱进错账户」同类。
+- **错误码前缀是 `API_*`**（`API_ACCOUNT_UNAVAILABLE` / `API_ORDER_NOT_FOUND` / `API_ORDER_REQUEST_CONFLICT` / `API_AMOUNT_INVALID` / `API_NOTIFY_INVALID`），定义在 `Core/Enum/ErrorCodeEnum.cs`。**带 `{0}` 的错误码必须传格式化参数**，否则细节丢失。
 
 ### 时间基准
 - **`TZ=Asia/Shanghai` 是硬前提**（全部时间列 `timestamp without time zone` + `DateTime.Now`）。不符时 `PayCenterStartup` 启动期**直接拒绝启动**；容器 / systemd 都要设。漏设会让「历史行 +08 / 新行 UTC」混进同一列且不报错。
@@ -71,13 +82,18 @@
 ### 数据库 / schema
 - `pay_*` 继承 `EntityBase`，**不开多租户**（账号池公司级共享）。
 - **CodeFirst 会建表建索引，但不改已有列宽/类型、不删旧索引。** 改列宽/索引要三处联动：① `PayConst.cs` 常量（唯一来源）② `scripts/paycenter-schema.sql` ③ DTO `[MaxLength(...)]` **引用常量**。改索引必须 `DROP INDEX IF EXISTS 旧名;` 再建新名。⚠️ 精度 scale 变小会四舍五入已有数据，先备份。
-- ★★ **配置只有一处来源：`Admin.NET.Application/Configuration/`。** 不要再加旁路覆盖目录 ——
-  历史上的 `ConfigurationLocal/LocalOverride.json` 已按「结合框架能力、删多余内容」的要求**整体删除**。
-  **切库 = 改 `Configuration/Database.json` 的 `DbType`/`ConnectionString`**，然后重新 build。
-- ★ **框架已内置「按环境分文件」，优先用框架能力，不要自己造一层。**
-  `Admin.NET.Application.csproj` 把 `Configuration\**\*` 复制到输出目录，并对
-  `App.*.json` / `HttpRemote.*.json` 设了 `CopyToPublishDirectory=Never`（开发专用，不随发布分发）。
-  ⚠️ `Database.json` **会**随发布分发，部署时需替换为生产连接串。
+- ★★ **配置只有一处目录：`Admin.NET.Application/Configuration/`**（不要再加旁路覆盖目录 ——
+  历史上的 `ConfigurationLocal/LocalOverride.json` 已按「结合框架能力、删多余内容」的要求**整体删除**）。
+  目录内**允许**用框架自带的「按环境分文件」（`App.Development.json` / `HttpRemote.Development.json` 一直在用）：
+  - `Database.json` = **基线**：PostgreSQL + **占位地址** + `EnableInitDb/InitTable/InitSeed` **全 false**（安全默认）
+  - `Database.Development.json` = **本地开发**：覆盖 `ConnectionString` 指向开发库 + 三个初始化开关置 true
+  - **切库 = 改 `Database.Development.json` 的 `ConnectionString`**（开发）或基线 `Database.json`（部署），然后重新 build。
+  - 两个文件都**必须自带 `DbType`/`ConnectionConfigs` 结构**：Furion 与 `db_target.py` 都是
+    「逐文件取 `ConnectionConfigs[0]` 再合并」，不是按字段跨文件合并。
+  - 为什么基线不写真实地址：发布包随 `Database.json` 一起分发，基线放占位地址 = **发布包里不含开发库连接串**；
+    且生产不会因为忘关开关而每次启动全表 CodeFirst。
+  - ⚠️ 环境不是 `Development` 时拿到的是「占位地址 + 初始化关闭」：**连不上会明确报错**，
+    而不是静默落到另一个库。
 - ★ **Furion 读的是 `bin/<cfg>/` 里的副本**，改完源文件必须重新 build。`Configuration` 目录必须存在
   （缺 → 主机构建期抛 `DirectoryNotFoundException` → 「进程秒退、`logs/` 空」）。
 - ★ `appsettings.Development.json` **故意不写** `ConfigurationScanDirectories`（扫描列表只由
@@ -85,7 +101,7 @@
   两份写法不一致时会「靠副作用成立」，极难归因。
 - ★★ **脚本要连库，一律走 `scripts/db_target.py`，禁止自己写死。** 它是「后端实际连哪个库」的
   **唯一解析实现**（`--json` / `--shell` / `--require-pg`；优先级：`PAY_PG_*` 环境变量 >
-  `Configuration/Database.json`）。
+  `Database.<ENV>.json` > `Database.json`；`<ENV>` 取 `PAY_ENV` → `ASPNETCORE_ENVIRONMENT` → `Development`）。
   `dev-up.sh` 与 `_pay_common.py` 都从它取库 —— 历史上这些脚本各自硬编码
   `127.0.0.1:55432/paymentcenter`，**后端一旦切库，schema 纠偏 / 守卫 / 回归造数会安静地打在另一个库上，
   而输出照样「全绿」**（本项目最忌讳的静默失效）。临时指向别处用 `PAY_PG_HOST/PORT/USER/DB/PASSWORD`。
@@ -140,7 +156,7 @@
 ## 5. 部署陷阱
 
 - **框架自带的部署脚手架已删除**：`docker-compose.yml`、`docker-compose-builder.yml`、`build.sh`、`app/`、`mysql/`、`nginx/`、`.env.production`。它们是 Admin.NET 原版部署（MySQL 5.7、`.NET 9` 路径、tdengine、minio、Redis 密码 `123456`、MySQL root/root），与本项目（net8.0 + PostgreSQL）不符；`build.sh` 还会用 `docker/.env.production` **覆盖 `Web/.env.production`**。需要时从 git 历史取回。
-- 本地数据库仍可用 `docker/docker-compose.pg.yml`（PostgreSQL 16，`127.0.0.1:55432`，`trust`）；但**连库的唯一来源始终是 `Admin.NET.Application/Configuration/Database.json`**（当前为远程开发库）。
+- 本地数据库仍可用 `docker/docker-compose.pg.yml`（PostgreSQL 16，`127.0.0.1:55432`，`trust`）；但**连库的配置只有一处目录**：`Admin.NET.Application/Configuration/` —— 基线 `Database.json`（占位地址 + 初始化关闭）与 `Database.Development.json`（本地开发，指向当前远程开发库），见 §3。
 - 生产：**必须 `TZ=Asia/Shanghai`**；PG 改 `scram-sha-256` + 独立密钥管理（本地是 `trust`，仅开发用）；TLS 需自行终结（原 nginx 示例配置与占位证书已随脚手架删除），上线前必须用真实证书。
 
 ## 6. 支付系统安全红线 / 已知残余风险（评审结论，2026-09-18）
@@ -158,3 +174,6 @@
 7. 本地 PG `trust` 认证 + 仅绑 127.0.0.1（开发专用，勿照搬生产）。
 8. 权限黑名单模型下，**漏挂按钮权限 = 对任何已登录用户开放**；守卫 §8 有断言，但新增接口仍需人补种子。
 9. 金额精度纠偏（scale 变小）会改写已有数据 → 执行 `paycenter-schema.sql` 前先备份。
+- **隐藏菜单必须「整棵子树都标 `IsHide=true`」**：侧边栏 `aside.vue` 的 `filterRoutesFun` 是**递归**过滤（隐藏目录即隐藏子树），但顶部**菜单搜索**用的是 `formatFlatteningRoutes` 拍平后的**一维**列表、逐项判 `isHide` —— 只隐藏目录会让子项**仍被搜到并能点进去**。且 `SysMenuSeedData` 带 `[IgnoreUpdateSeed]`，**改种子不会更新已有行**（实测：加 `IsHide=true` 后重启，活库 `ishide` 仍为 `false`，日志显示「更新 000 条」），现有库必须显式 `UPDATE sysmenu SET ishide=true WHERE id IN (...)`。守卫 §6b 断言「种子标隐藏的菜单活库也隐藏」+「隐藏项的子项也隐藏」。
+- **凭证失效有三个开关**：停用凭证、**停用绑定用户**（`OnValidated` 校验 `BindUser.Status`）、重新生成密钥。三者对外**统一报「accessKey 无效」**（与不存在不可区分）。★ 校验绑定用户必须走 `GetBindUserAsync`（**每次读库**）——`GetByKey` 缓存长期不过期（实测 20s 仍是旧值），用缓存快照判启用会让「停用用户」**静默不生效**。
+- **鉴权链路上任何「可能为 null 的关联对象」都必须判空**：原先 `openAccess.BindUser.Account` 在用户不存在时抛 NRE，而鉴权中间件里的 NRE 会变成 **HTTP 500 + 堆栈**（响应体含服务器文件路径、非 JSON）。

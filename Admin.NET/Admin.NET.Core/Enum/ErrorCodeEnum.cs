@@ -959,95 +959,107 @@ public enum ErrorCodeEnum
     /// 无可用收款账号
     /// </summary>
     [ErrorCodeItemMetadata("无可用收款账号")]
-    P1001,
+    API_ACCOUNT_UNAVAILABLE,
 
     /// <summary>
     /// 收款账号不存在
     /// </summary>
     [ErrorCodeItemMetadata("收款账号不存在")]
-    P1002,
+    API_ACCOUNT_NOT_FOUND,
 
     /// <summary>
-    /// 收款金额必须大于 0
+    /// 收款金额不合法（必须大于 0 且不超出允许的小数位）
     /// </summary>
-    [ErrorCodeItemMetadata("收款金额必须大于 0")]
-    P1003,
+    [ErrorCodeItemMetadata("收款金额不合法（{0}）")]
+    API_AMOUNT_INVALID,
 
     /// <summary>
     /// 收款订单不存在
     /// </summary>
     [ErrorCodeItemMetadata("收款订单不存在")]
-    P1004,
+    API_ORDER_NOT_FOUND,
 
     /// <summary>
     /// 收款订单已过期
     /// </summary>
     [ErrorCodeItemMetadata("收款订单已过期")]
-    P1005,
+    API_ORDER_EXPIRED,
 
     /// <summary>
     /// 收款订单已完成
     /// </summary>
     [ErrorCodeItemMetadata("收款订单已完成")]
-    P1006,
+    API_ORDER_COMPLETED,
 
     /// <summary>
     /// 额度并发占用失败，请重试
     /// </summary>
     [ErrorCodeItemMetadata("额度并发占用失败，请重试")]
-    P1007,
+    API_QUOTA_BUSY,
 
     /// <summary>
     /// 追加额度必须大于 0
     /// </summary>
     [ErrorCodeItemMetadata("追加额度必须大于 0")]
-    P1008,
+    API_QUOTA_AMOUNT_INVALID,
 
     /// <summary>
     /// 异常到账记录不存在
     /// </summary>
     [ErrorCodeItemMetadata("异常到账记录不存在")]
-    P1009,
+    API_ABNORMAL_NOT_FOUND,
 
     /// <summary>
     /// 异常到账记录已处理，不能重复处理
     /// </summary>
     [ErrorCodeItemMetadata("异常到账记录已处理，不能重复处理")]
-    P1010,
+    API_ABNORMAL_HANDLED,
 
     /// <summary>
-    /// 外部业务单号已被其他请求使用
+    /// 相同外部业务单号的请求参数不一致
     /// </summary>
-    [ErrorCodeItemMetadata("外部业务单号已被其他请求使用")]
-    P1011,
+    [ErrorCodeItemMetadata("相同外部业务单号的请求参数与原订单不一致（{0}）")]
+    API_ORDER_REQUEST_CONFLICT,
 
     /// <summary>
     /// 该账号存在未终结的订单，不能删除
     /// </summary>
     [ErrorCodeItemMetadata("该账号存在未终结的订单，不能删除")]
-    P1012,
+    API_ACCOUNT_IN_USE,
 
     /// <summary>
     /// 该状态由系统自动维护，不能手工设置
     /// </summary>
     [ErrorCodeItemMetadata("该状态由系统自动维护，不能手工设置")]
-    P1013,
+    API_STATUS_READONLY,
 
     /// <summary>
     /// 该账号剩余可用额度为 0，请先追加额度
     /// </summary>
     [ErrorCodeItemMetadata("该账号剩余可用额度为 0，请先追加额度")]
-    P1014,
+    API_QUOTA_EXHAUSTED,
 
     /// <summary>
     /// 到账通知参数不合法
     /// </summary>
     [ErrorCodeItemMetadata("到账通知参数不合法")]
-    P1015,
+    API_NOTIFY_INVALID,
 
     /// <summary>
     /// 目标订单不是待到账/部分到账状态，不能关联到账
     /// </summary>
     [ErrorCodeItemMetadata("目标订单当前为「{0}」，只有待到账/部分到账的订单才能关联到账")]
-    P1016,
+    API_ORDER_STATUS_INVALID,
+
+    /// <summary>
+    /// 账号文本与收款码图片都没填
+    /// </summary>
+    [ErrorCodeItemMetadata("请填写账号信息或上传收款码图片")]
+    API_ACCOUNT_PAYLOAD_REQUIRED,
+
+    /// <summary>
+    /// 收款码图片地址不是本系统上传接口返回的路径
+    /// </summary>
+    [ErrorCodeItemMetadata("收款码图片地址不合法")]
+    API_QR_IMAGE_INVALID,
 }

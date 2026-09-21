@@ -47,6 +47,12 @@
 				<template #row_type="{ row }">
 					{{ state.typeLabelMap[row.type] ?? row.type }}
 				</template>
+				<template #row_account="{ row }">
+					<div class="account-cell">
+						<el-image v-if="row.qrImageUrl" :src="row.qrImageUrl" :preview-src-list="[row.qrImageUrl]" fit="cover" class="qr-thumb" preview-teleported />
+						<span>{{ row.accountInfo || (row.qrImageUrl ? '收款码' : '-') }}</span>
+					</div>
+				</template>
 				<template #row_status="{ row }">
 					<el-tag :type="statusTagType(row.status)">{{ row.statusText }}</el-tag>
 				</template>
@@ -134,7 +140,7 @@ const options = useVxeTable<PayAccountOutput>(
 		columns: [
 			{ field: 'seq', type: 'seq', title: '序号', width: 60, fixed: 'left' },
 			{ field: 'type', title: '收款类型', minWidth: 120, slots: { default: 'row_type' } },
-			{ field: 'accountInfo', title: '账号信息', minWidth: 220, showOverflow: 'tooltip' },
+			{ field: 'accountInfo', title: '账号信息', minWidth: 240, slots: { default: 'row_account' } },
 			{ field: 'totalQuota', title: '总额度', minWidth: 110, align: 'right', formatter: ({ cellValue }) => money(cellValue) },
 			{ field: 'usedQuota', title: '已用额度', minWidth: 110, align: 'right', formatter: ({ cellValue }) => money(cellValue) },
 			{ field: 'lockedQuota', title: '预占额度', minWidth: 110, align: 'right', formatter: ({ cellValue }) => money(cellValue) },
@@ -210,10 +216,10 @@ const gridEvents: VxeGridListeners<PayAccountOutput> = {
 	},
 };
 
-// 打开新增页面
+// 打开新增页面（type 是字典字符串如 bank/wxpay，不要塞数字）
 const handleAdd = () => {
 	state.title = '新增收款账号';
-	editRef.value?.openDialog({ type: 1 });
+	editRef.value?.openDialog({ type: undefined, totalQuota: 0 });
 };
 
 // 打开编辑页面
@@ -231,7 +237,7 @@ const handleAddQuota = (row: any) => {
 const handleSetStatus = (row: any) => {
 	const target = row.status === 1 ? 2 : 1;
 	const label = target === 1 ? '启用' : '停用';
-	ElMessageBox.confirm(`确定${label}收款账号：【${row.accountInfo}】?`, '提示', {
+	ElMessageBox.confirm(`确定${label}收款账号：【${accountLabel(row)}】?`, '提示', {
 		confirmButtonText: '确定',
 		cancelButtonText: '取消',
 		type: 'warning',
@@ -246,7 +252,7 @@ const handleSetStatus = (row: any) => {
 
 // 删除
 const handleDelete = (row: any) => {
-	ElMessageBox.confirm(`确定删除收款账号：【${row.accountInfo}】?`, '提示', {
+	ElMessageBox.confirm(`确定删除收款账号：【${accountLabel(row)}】?`, '提示', {
 		confirmButtonText: '确定',
 		cancelButtonText: '取消',
 		type: 'warning',
@@ -259,7 +265,7 @@ const handleDelete = (row: any) => {
 		.catch(() => {});
 };
 
-// 金额展示
+const accountLabel = (row: any) => row.accountInfo || (row.qrImageUrl ? '收款码图片' : row.type || '');
 const money = (value: any) => (value === undefined || value === null ? '-' : Number(value).toFixed(2));
 // 时间展示
 const fmtTime = (value: any) => {
@@ -288,5 +294,16 @@ const statusTagType = (status: any) => {
 .text-danger {
 	color: var(--el-color-danger);
 	font-weight: 600;
+}
+.account-cell {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.qr-thumb {
+	width: 36px;
+	height: 36px;
+	flex: none;
+	border-radius: 2px;
 }
 </style>

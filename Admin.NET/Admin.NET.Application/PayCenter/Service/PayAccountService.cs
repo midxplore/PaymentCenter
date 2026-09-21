@@ -4,6 +4,8 @@
 //
 // 不得利用本项目从事危害国家安全、扰乱社会秩序、侵犯他人合法权益等法律法规禁止的活动！任何基于本项目二次开发而产生的一切法律纠纷和责任，我们不承担任何责任！
 
+using Microsoft.AspNetCore.Http;
+
 namespace Admin.NET.Application;
 
 /// <summary>
@@ -12,19 +14,25 @@ namespace Admin.NET.Application;
 [ApiDescriptionSettings(Order = 400, Description = "收款账号")]
 public class PayAccountService : IDynamicApiController, ITransient
 {
+    private const string QrUrlPrefix = "/upload/pay-qr/";
+    private const string QrAllowSuffix = ".jpg.png.bmp.webp";
+
     private readonly SqlSugarRepository<PayAccount> _payAccountRep;
     private readonly SqlSugarRepository<PayOrder> _payOrderRep;
     private readonly PayAuditService _payAuditService;
+    private readonly SysFileService _sysFileService;
     private readonly UserManager _userManager;
 
     public PayAccountService(SqlSugarRepository<PayAccount> payAccountRep,
         SqlSugarRepository<PayOrder> payOrderRep,
         PayAuditService payAuditService,
+        SysFileService sysFileService,
         UserManager userManager)
     {
         _payAccountRep = payAccountRep;
         _payOrderRep = payOrderRep;
         _payAuditService = payAuditService;
+        _sysFileService = sysFileService;
         _userManager = userManager;
     }
 
@@ -62,6 +70,7 @@ public class PayAccountService : IDynamicApiController, ITransient
         {
             item.RemainingQuota = item.TotalQuota - item.UsedQuota - item.LockedQuota;
             item.StatusText = item.Status.GetDescription();
+            item.QrImageUrl ??= "";
         }
         return paged;
     }
@@ -75,10 +84,11 @@ public class PayAccountService : IDynamicApiController, ITransient
     [DisplayName("获取收款账号详情")]
     public async Task<PayAccountOutput> Detail([FromQuery] BaseIdInput input)
     {
-        var account = await _payAccountRep.GetByIdAsync(input.Id) ?? throw Oops.Oh(ErrorCodeEnum.P1002);
+        var account = await _payAccountRep.GetByIdAsync(input.Id) ?? throw Oops.Oh(ErrorCodeEnum.API_ACCOUNT_NOT_FOUND);
         var output = account.Adapt<PayAccountOutput>();
         output.RemainingQuota = GetRemainingQuota(account);
         output.StatusText = account.Status.GetDescription();
+        output.QrImageUrl ??= "";
         return output;
     }
 
@@ -91,10 +101,15 @@ public class PayAccountService : IDynamicApiController, ITransient
     [DisplayName("新增收款账号")]
     public async Task<long> Add(AddPayAccountInput input)
     {
+        var accountInfo = NormalizeAccountInfo(input.AccountInfo);
+        var qrImageUrl = NormalizeQrImageUrl(input.QrImageUrl);
+        EnsureAccountPayload(accountInfo, qrImageUrl);
+
         var account = new PayAccount
         {
             Type = input.Type.Trim(),
-            AccountInfo = input.AccountInfo.Trim(),
+            AccountInfo = accountInfo,
+            QrImageUrl = string.IsNullOrEmpty(qrImageUrl) ? null : qrImageUrl,
             TotalQuota = input.TotalQuota,
             UsedQuota = 0m,
             LockedQuota = 0m,
@@ -103,15 +118,30 @@ public class PayAccountService : IDynamicApiController, ITransient
         };
         await _payAccountRep.InsertAsync(account);
 
-        // F7.3 审计：只增不改
+        // 快照不含账号文本和图片路径
         await _payAuditService.WriteAsync(PayAuditActionEnum.AccountAdd, nameof(PayAccount), account.Id,
-            account.Type, null, account, $"新增收款账号，初始额度 {account.TotalQuota:0.00}");
+            account.Type, null,
+            new { account.Type, account.TotalQuota, account.Status, HasQrImage = account.QrImageUrl != null },
+            $"新增收款账号，初始额度 {account.TotalQuota:0.00}");
 
         return account.Id;
     }
 
     /// <summary>
-    /// 编辑收款账号（F1.2：修改备注、状态）
+    /// 上传收款码图片，返回根相对路径
+    /// </summary>
+    [ApiDescriptionSettings(Name = "UploadQr"), HttpPost]
+    [DisplayName("上传收款码图片")]
+    public async Task<string> UploadQr([Required] IFormFile file)
+    {
+        var sysFile = await _sysFileService.UploadFile(
+            new UploadFileInput { File = file, AllowSuffix = QrAllowSuffix },
+            "upload/pay-qr");
+        return NormalizeQrImageUrl(sysFile.Url);
+    }
+
+    /// <summary>
+    /// 编辑收款账号（账号文本、收款码、备注、状态）
     /// </summary>
     /// <param name="input"></param>
     /// <returns></returns>
@@ -119,27 +149,63 @@ public class PayAccountService : IDynamicApiController, ITransient
     [DisplayName("编辑收款账号")]
     public async Task Update(UpdatePayAccountInput input)
     {
-        var account = await _payAccountRep.GetByIdAsync(input.Id) ?? throw Oops.Oh(ErrorCodeEnum.P1002);
+        var account = await _payAccountRep.GetByIdAsync(input.Id) ?? throw Oops.Oh(ErrorCodeEnum.API_ACCOUNT_NOT_FOUND);
 
         // 「已用完」是系统自动状态，不允许手工设置
         if (input.Status == PayAccountStatusEnum.Exhausted)
-            throw Oops.Oh(ErrorCodeEnum.P1013);
+            throw Oops.Oh(ErrorCodeEnum.API_STATUS_READONLY);
 
         // 启用前校验剩余额度，避免出现"启用但无额度"的无效状态
         if (input.Status == PayAccountStatusEnum.Enabled && GetRemainingQuota(account) <= 0)
-            throw Oops.Oh(ErrorCodeEnum.P1014);
+            throw Oops.Oh(ErrorCodeEnum.API_QUOTA_EXHAUSTED);
 
-        var before = new { account.Remark, account.Status };
+        var before = new
+        {
+            account.Remark,
+            account.Status,
+            HasAccountInfo = !string.IsNullOrEmpty(account.AccountInfo),
+            HasQrImage = !string.IsNullOrEmpty(account.QrImageUrl)
+        };
 
+        var accountInfo = account.AccountInfo ?? "";
+        var accountChanged = false;
+        if (input.AccountInfo != null)
+        {
+            accountInfo = NormalizeAccountInfo(input.AccountInfo);
+            accountChanged = true;
+        }
+
+        var qrImageUrl = account.QrImageUrl ?? "";
+        var qrChanged = false;
+        if (input.QrImageUrl != null)
+        {
+            qrImageUrl = NormalizeQrImageUrl(input.QrImageUrl);
+            qrChanged = true;
+        }
+        EnsureAccountPayload(accountInfo, qrImageUrl);
+
+        if (accountChanged)
+            account.AccountInfo = accountInfo;
+        if (qrChanged)
+            account.QrImageUrl = string.IsNullOrEmpty(qrImageUrl) ? null : qrImageUrl;
         account.Remark = input.Remark;
         account.Status = input.Status;
         await _payAccountRep.AsUpdateable(account)
-            .UpdateColumns(u => new { u.Remark, u.Status, u.UpdateTime, u.UpdateUserId, u.UpdateUserName })
+            .UpdateColumns(u => new { u.AccountInfo, u.Remark, u.Status, u.QrImageUrl, u.UpdateTime, u.UpdateUserId, u.UpdateUserName })
             .ExecuteCommandAsync();
 
-        // F7.3 审计：只增不改
         await _payAuditService.WriteAsync(PayAuditActionEnum.AccountUpdate, nameof(PayAccount), account.Id,
-            account.Type, before, new { account.Remark, account.Status }, "编辑收款账号");
+            account.Type, before,
+            new
+            {
+                account.Remark,
+                account.Status,
+                AccountInfoChanged = accountChanged,
+                QrImageChanged = qrChanged,
+                HasAccountInfo = !string.IsNullOrEmpty(account.AccountInfo),
+                HasQrImage = !string.IsNullOrEmpty(account.QrImageUrl)
+            },
+            "编辑收款账号");
     }
 
     /// <summary>
@@ -154,7 +220,7 @@ public class PayAccountService : IDynamicApiController, ITransient
     [DisplayName("追加总额度")]
     public async Task AddQuota(AddQuotaInput input)
     {
-        var before = await _payAccountRep.GetByIdAsync(input.Id) ?? throw Oops.Oh(ErrorCodeEnum.P1002);
+        var before = await _payAccountRep.GetByIdAsync(input.Id) ?? throw Oops.Oh(ErrorCodeEnum.API_ACCOUNT_NOT_FOUND);
         var beforeQuota = before.TotalQuota;
 
         var rows = await _payAccountRep.AsUpdateable()
@@ -167,7 +233,7 @@ public class PayAccountService : IDynamicApiController, ITransient
             })
             .Where(u => u.Id == input.Id)
             .ExecuteCommandAsync();
-        if (rows == 0) throw Oops.Oh(ErrorCodeEnum.P1002);
+        if (rows == 0) throw Oops.Oh(ErrorCodeEnum.API_ACCOUNT_NOT_FOUND);
 
         // 额度恢复后自动解除「已用完」状态（F1.4，条件更新，天然幂等）
         await SyncStatusByQuotaAsync(input.Id);
@@ -190,11 +256,11 @@ public class PayAccountService : IDynamicApiController, ITransient
     public async Task SetStatus(SetPayAccountStatusInput input)
     {
         if (input.Status == PayAccountStatusEnum.Exhausted)
-            throw Oops.Oh(ErrorCodeEnum.P1013);
+            throw Oops.Oh(ErrorCodeEnum.API_STATUS_READONLY);
 
-        var account = await _payAccountRep.GetByIdAsync(input.Id) ?? throw Oops.Oh(ErrorCodeEnum.P1002);
+        var account = await _payAccountRep.GetByIdAsync(input.Id) ?? throw Oops.Oh(ErrorCodeEnum.API_ACCOUNT_NOT_FOUND);
         if (input.Status == PayAccountStatusEnum.Enabled && GetRemainingQuota(account) <= 0)
-            throw Oops.Oh(ErrorCodeEnum.P1014);
+            throw Oops.Oh(ErrorCodeEnum.API_QUOTA_EXHAUSTED);
 
         var fromStatus = account.Status;
 
@@ -221,17 +287,18 @@ public class PayAccountService : IDynamicApiController, ITransient
     [DisplayName("删除收款账号")]
     public async Task Delete(BaseIdInput input)
     {
-        var account = await _payAccountRep.GetByIdAsync(input.Id) ?? throw Oops.Oh(ErrorCodeEnum.P1002);
+        var account = await _payAccountRep.GetByIdAsync(input.Id) ?? throw Oops.Oh(ErrorCodeEnum.API_ACCOUNT_NOT_FOUND);
 
         var hasActiveOrder = await _payOrderRep.AsQueryable().AnyAsync(u => u.AccountId == input.Id
             && (u.Status == PayOrderStatusEnum.Pending || u.Status == PayOrderStatusEnum.Partial));
-        if (hasActiveOrder) throw Oops.Oh(ErrorCodeEnum.P1012);
+        if (hasActiveOrder) throw Oops.Oh(ErrorCodeEnum.API_ACCOUNT_IN_USE);
 
         await _payAccountRep.DeleteByIdAsync(input.Id);
 
-        // F7.3 审计：只增不改（删除前快照留档，保证账号历史可追溯）
         await _payAuditService.WriteAsync(PayAuditActionEnum.AccountDelete, nameof(PayAccount), account.Id,
-            account.Type, account, null, "删除收款账号");
+            account.Type,
+            new { account.Type, account.Status, account.TotalQuota, HasQrImage = !string.IsNullOrEmpty(account.QrImageUrl) },
+            null, "删除收款账号");
     }
 
     /// <summary>
@@ -269,6 +336,27 @@ public class PayAccountService : IDynamicApiController, ITransient
                 && u.Status == PayAccountStatusEnum.Exhausted
                 && u.TotalQuota > u.UsedQuota + u.LockedQuota)
             .ExecuteCommandAsync();
+    }
+
+    private static void EnsureAccountPayload(string accountInfo, string qrImageUrl)
+    {
+        if (string.IsNullOrEmpty(accountInfo) && string.IsNullOrEmpty(qrImageUrl))
+            throw Oops.Oh(ErrorCodeEnum.API_ACCOUNT_PAYLOAD_REQUIRED);
+    }
+
+    private static string NormalizeAccountInfo(string accountInfo)
+        => (accountInfo ?? "").Trim();
+
+    private static string NormalizeQrImageUrl(string qrImageUrl)
+    {
+        if (string.IsNullOrWhiteSpace(qrImageUrl)) return "";
+        var path = qrImageUrl.Trim().Replace('\\', '/');
+        if (!path.StartsWith('/')) path = "/" + path;
+        if (path.Length > 512
+            || path.Contains("..", StringComparison.Ordinal)
+            || !path.StartsWith(QrUrlPrefix, StringComparison.Ordinal))
+            throw Oops.Oh(ErrorCodeEnum.API_QR_IMAGE_INVALID);
+        return path;
     }
 
     /// <summary>

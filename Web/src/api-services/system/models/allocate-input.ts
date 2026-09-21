@@ -34,7 +34,7 @@ export interface AllocateInput {
      * @type {number}
      * @memberof AllocateInput
      */
-    amount?: number;
+    amount?: string;
 
     /**
      * 外部业务单号（可选，作为幂等键）

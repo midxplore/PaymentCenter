@@ -40,7 +40,9 @@
 								<el-tab-pane :label="$t('message.label.one1')" name="account">
 									<Account />
 								</el-tab-pane>
-								<el-tab-pane :label="$t('message.label.two2')" name="mobile">
+								<!-- 手机号登录：本期暂不开放。组件（mobile.vue）与后端接口都保留，
+									 只是不渲染入口 —— 恢复方式：把 themeConfig 的 mobileLogin 改成 true -->
+								<el-tab-pane v-if="getThemeConfig.mobileLogin" :label="$t('message.label.two2')" name="mobile">
 									<Mobile />
 								</el-tab-pane>
 							</el-tabs>

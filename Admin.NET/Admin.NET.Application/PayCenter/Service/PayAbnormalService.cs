@@ -111,16 +111,16 @@ public class PayAbnormalService : IDynamicApiController, ITransient
             // ── 步骤 1：校验台账记录 ────────────────────────────────────────
             var abnormal = await _payAbnormalReceiptRep.AsQueryable()
                 .Where(u => u.Id == input.Id).FirstAsync()
-                ?? throw Oops.Oh(ErrorCodeEnum.P1008);
+                ?? throw Oops.Oh(ErrorCodeEnum.API_QUOTA_AMOUNT_INVALID);
             if (abnormal.HandleStatus != PayHandleStatusEnum.Pending)
-                throw Oops.Oh(ErrorCodeEnum.P1009);
+                throw Oops.Oh(ErrorCodeEnum.API_ABNORMAL_NOT_FOUND);
 
             // ── 步骤 2：校验目标订单可接收 ──────────────────────────────────
             var order = await _payOrderRep.AsQueryable()
                 .Where(u => u.OrderNo == targetOrderNo).FirstAsync()
-                ?? throw Oops.Oh(ErrorCodeEnum.P1004);
+                ?? throw Oops.Oh(ErrorCodeEnum.API_ORDER_NOT_FOUND);
             if (order.Status != PayOrderStatusEnum.Pending && order.Status != PayOrderStatusEnum.Partial)
-                throw Oops.Oh(ErrorCodeEnum.P1016, order.Status.GetDescription());
+                throw Oops.Oh(ErrorCodeEnum.API_ORDER_STATUS_INVALID, order.Status.GetDescription());
 
             // ── 步骤 3：先记「人工关联」事件（说明这笔金额是被人挂上来的）──────
             await _payOrderEventRep.InsertAsync(new PayOrderEvent
@@ -142,7 +142,7 @@ public class PayAbnormalService : IDynamicApiController, ITransient
             if (applied == null)
             {
                 // 影响行数为 0：订单在校验之后被并发终结（过期任务 / 另一笔到账推它完成）
-                throw Oops.Oh(ErrorCodeEnum.P1016, "已被并发终结");
+                throw Oops.Oh(ErrorCodeEnum.API_ORDER_STATUS_INVALID, "已被并发终结");
             }
 
             // ── 步骤 5：标记台账已处理（条件更新，防重复处置）────────────────
@@ -160,7 +160,7 @@ public class PayAbnormalService : IDynamicApiController, ITransient
                 })
                 .Where(u => u.Id == abnormal.Id && u.HandleStatus == PayHandleStatusEnum.Pending)
                 .ExecuteCommandAsync();
-            if (handled == 0) throw Oops.Oh(ErrorCodeEnum.P1009);
+            if (handled == 0) throw Oops.Oh(ErrorCodeEnum.API_ABNORMAL_NOT_FOUND);
 
             // ── 步骤 6：回填通知记录「已累加」────────────────────────────────
             // 该凭证号此前是"未累加"（异常入库），现在钱确实入账了，把标记补上。
@@ -219,9 +219,9 @@ public class PayAbnormalService : IDynamicApiController, ITransient
         {
             var abnormal = await _payAbnormalReceiptRep.AsQueryable()
                 .Where(u => u.Id == input.Id).FirstAsync()
-                ?? throw Oops.Oh(ErrorCodeEnum.P1008);
+                ?? throw Oops.Oh(ErrorCodeEnum.API_QUOTA_AMOUNT_INVALID);
             if (abnormal.HandleStatus != PayHandleStatusEnum.Pending)
-                throw Oops.Oh(ErrorCodeEnum.P1009);
+                throw Oops.Oh(ErrorCodeEnum.API_ABNORMAL_NOT_FOUND);
 
             var handled = await _payAbnormalReceiptRep.AsUpdateable()
                 .SetColumns(u => new PayAbnormalReceipt
@@ -235,7 +235,7 @@ public class PayAbnormalService : IDynamicApiController, ITransient
                 })
                 .Where(u => u.Id == abnormal.Id && u.HandleStatus == PayHandleStatusEnum.Pending)
                 .ExecuteCommandAsync();
-            if (handled == 0) throw Oops.Oh(ErrorCodeEnum.P1009);
+            if (handled == 0) throw Oops.Oh(ErrorCodeEnum.API_ABNORMAL_NOT_FOUND);
 
             await _payAuditService.WriteAsync(PayAuditActionEnum.AbnormalHandle, nameof(PayAbnormalReceipt),
                 abnormal.Id, abnormal.VoucherNo,

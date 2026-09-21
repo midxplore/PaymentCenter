@@ -16,15 +16,18 @@ namespace Admin.NET.Core.Service;
 public class SysOpenAccessService : IDynamicApiController, ITransient
 {
     private readonly SqlSugarRepository<SysOpenAccess> _sysOpenAccessRep;
+    private readonly SqlSugarRepository<SysUser> _sysUserRep;
     private readonly SysCacheService _sysCacheService;
 
     /// <summary>
     /// 开放接口身份服务构造函数
     /// </summary>
     public SysOpenAccessService(SqlSugarRepository<SysOpenAccess> sysOpenAccessRep,
+        SqlSugarRepository<SysUser> sysUserRep,
         SysCacheService sysCacheService)
     {
         _sysOpenAccessRep = sysOpenAccessRep;
+        _sysUserRep = sysUserRep;
         _sysCacheService = sysCacheService;
     }
 
@@ -39,6 +42,16 @@ public class SysOpenAccessService : IDynamicApiController, ITransient
         // 时间戳
         if (input.Timestamp == 0)
             input.Timestamp = new DateTimeOffset(DateTime.Now).ToUnixTimeMilliseconds();
+
+        // ── 密钥不得是列表页回显的掩码 ────────────────────────────────────
+        // ★ 为什么必须拦：列表接口只回显掩码（如 abcd****wxyz），而本方法**无条件**把入参
+        //   当作真实密钥去算 HMAC。若把掩码传进来，HMAC 会**正常算出一个 Base64 字符串**
+        //   —— 工具看起来完全正常，但结果必然是错的签名（实测：拿它去调用返回「sign 无效的签名」）。
+        //   这类「有输出但输出是错的」最难排查，所以在入口直接拒绝。
+        //   与 AddOpenAccess 里那条掩码校验同源（都指向 OpenAccessSecretMask）。
+        if (OpenAccessSecretMask.LooksLikeMask(input.AccessSecret))
+            throw Oops.Bah($"密钥不能包含 {OpenAccessSecretMask.Marker}：该值看起来是列表页的掩码，"
+                + "不是真实密钥。掩码无法用于计算签名，请填写创建凭证时保存的完整密钥。");
 
         // 密钥
         var appSecretByte = Encoding.UTF8.GetBytes(input.AccessSecret);
@@ -78,6 +91,35 @@ public class SysOpenAccessService : IDynamicApiController, ITransient
     }
 
     /// <summary>
+    /// 校验绑定的用户存在且为启用状态
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>为什么在入口就拦</b>：绑定用户是凭证可用性的前提 —— 鉴权时要读它注入 claims。
+    /// 若允许绑定到不存在（或已停用）的用户，会建出一个「签名正确但调用必失败」的凭证：
+    /// 接入方拿着合法密钥却永远调不通，而平台侧只有一行鉴权警告。
+    /// 这类「建得成功、用得失败」的配置最耗时排查，因此在保存时就拒绝。
+    /// </para>
+    /// <para>
+    /// 校验用 <see cref="GetBindUserAsync"/>（不走缓存），保证看到的是最新状态。
+    /// </para>
+    /// </remarks>
+    /// <param name="bindUserId">绑定的用户Id</param>
+    /// <exception cref="Exception">用户不存在或已停用时抛出</exception>
+    [NonAction]
+    public async Task EnsureBindUserValidAsync(long bindUserId)
+    {
+        var user = await GetBindUserAsync(bindUserId);
+        if (user == null)
+            throw Oops.Bah($"绑定用户不存在（bindUserId={bindUserId}）：请选择有效的用户，"
+                + "否则该凭证签名正确也无法通过鉴权。");
+
+        if (user.Status != StatusEnum.Enable)
+            throw Oops.Bah($"绑定用户「{user.Account}」已停用：停用状态的用户无法用于开放接口鉴权，"
+                + "请先启用该用户或改绑其它用户。");
+    }
+
+    /// <summary>
     /// 增加开放接口身份 🔖
     /// </summary>
     /// <param name="input"></param>
@@ -92,6 +134,9 @@ public class SysOpenAccessService : IDynamicApiController, ITransient
         // 列表只回显掩码，防止有人把掩码当密钥复制进来（真密钥是 Base64，不含 *）
         if (OpenAccessSecretMask.LooksLikeMask(input.AccessSecret))
             throw Oops.Bah($"密钥不能包含 {OpenAccessSecretMask.Marker}：该值看起来是列表里的掩码，请点「生成密钥」重新生成");
+
+        // 绑定用户必须存在且启用，否则会建出「必然调不通」的凭证
+        await EnsureBindUserValidAsync(input.BindUserId);
 
         var openAccess = input.Adapt<SysOpenAccess>();
         await _sysOpenAccessRep.InsertAsync(openAccess);
@@ -139,6 +184,9 @@ public class SysOpenAccessService : IDynamicApiController, ITransient
             // 像掩码但不是本行的掩码：多半是前端把别的行/陈旧的值带过来了，直接拒绝而不是存进去
             throw Oops.Bah($"密钥不能包含 {OpenAccessSecretMask.Marker}：请点「生成密钥」重新生成，或留空表示不修改");
         }
+
+        // 改绑的用户同样必须存在且启用（否则停用/删除了用户后再编辑一次就绕过了入口校验）
+        await EnsureBindUserValidAsync(openAccess.BindUserId);
 
         _sysCacheService.Remove(CacheConst.KeyOpenAccess + openAccess.AccessKey);
         if (!string.Equals(existing.AccessKey, openAccess.AccessKey, StringComparison.Ordinal))
@@ -193,6 +241,40 @@ public class SysOpenAccessService : IDynamicApiController, ITransient
     }
 
     /// <summary>
+    /// 读取凭证绑定的用户（**每次读库，不走缓存**）
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ★ <b>为什么不用 <see cref="GetByKey"/> 里关联出来的那个 <c>BindUser</c></b>：
+    /// <see cref="GetByKey"/> 把凭证（含关联用户）整体缓存，而用户的状态、机构、姓名会随后台操作变化，
+    /// 缓存里那份是**冻结的旧快照**。实测：直接改库把 scopes 改掉，20 秒后鉴权侧读到的仍是旧值。
+    /// 若拿旧快照去判「绑定用户是否已停用」，停用操作会**静默不生效**（仍然放行）——
+    /// 而这正是「停用即失效」最需要可靠的地方。
+    /// </para>
+    /// <para>
+    /// 之所以选择「每次都读库」而不是「在用户改动的每个入口清缓存」：后者要在
+    /// <c>SetStatus</c> / <c>UpdateUser</c> / <c>DeleteUser</c> 等多处挂钩，
+    /// 漏掉任何一处（或将来新增一处）都会重新变成静默失效，且没有任何报错。
+    /// 一次主键查询的成本远低于「停用不生效」的风险。
+    /// </para>
+    /// <para>
+    /// <c>ClearFilter&lt;ITenantIdFilter&gt;()</c>：签名鉴权发生在租户上下文建立之前，
+    /// 不清理租户过滤器会因取不到当前租户而**查不到用户**，
+    /// 于是合法凭证被误判为无效（同样没有报错）。软删除过滤器保留：已删除的用户视为不存在。
+    /// </para>
+    /// </remarks>
+    /// <param name="bindUserId">绑定的用户Id</param>
+    /// <returns>用户；不存在或已删除时返回 null</returns>
+    [NonAction]
+    public async Task<SysUser> GetBindUserAsync(long bindUserId)
+    {
+        return await _sysUserRep.AsQueryable()
+            .ClearFilter<ITenantIdFilter>()
+            .Includes(u => u.SysOrg)
+            .FirstAsync(u => u.Id == bindUserId);
+    }
+
+    /// <summary>
     /// Signature 身份验证事件默认实现
     /// </summary>
     [NonAction]
@@ -234,19 +316,57 @@ public class SysOpenAccessService : IDynamicApiController, ITransient
                 var httpContext = context.HttpContext;
                 var openAccessService = httpContext.RequestServices.GetRequiredService<SysOpenAccessService>();
                 var openAccess = openAccessService.GetByKey(context.AccessKey).GetAwaiter().GetResult();
+
+                // 统一的失败出口：对外一律报「accessKey 无效」，
+                // 与「凭证不存在 / 已停用」**不可区分** —— 不向未授权方泄漏
+                // 「这个 accessKey 存在，只是它绑定的用户有问题」这一信息。
+                // 失败原因只写服务端日志，不进响应体。
+                void RejectInvalid(string reason)
+                {
+                    var logger = httpContext.RequestServices.GetRequiredService<ILogger<SysOpenAccessService>>();
+                    logger.LogWarning("开放接口凭证校验未通过，拒绝访问：accessKey={AccessKey}｜{Reason}",
+                        context.AccessKey, reason);
+                    httpContext.Items[SignatureAuthenticationDefaults.AuthenticateFailMsgKey] = "accessKey 无效";
+                    context.Fail("accessKey 无效");
+                }
+
+                // ── 凭证必须存在 ────────────────────────────────────────────
+                // GetByKey 在记录被删时会返回 null；不判空会直接 NRE，
+                // 而鉴权中间件里的 NRE 会变成 **HTTP 500 + 堆栈**（实测响应体里带服务器文件路径）。
+                if (openAccess == null)
+                {
+                    RejectInvalid("凭证不存在");
+                    return Task.CompletedTask;
+                }
+
+                // ── 绑定用户必须存在且启用（停用绑定用户 = 凭证立即失效）──────
+                // ★ 这里**每次都重新读库**，不用 GetByKey 缓存里的 BindUser 快照，
+                //   否则「停用用户」不会立即生效（缓存长期不过期）。详见 GetBindUserAsync 的备注。
+                var bindUser = openAccessService.GetBindUserAsync(openAccess.BindUserId).GetAwaiter().GetResult();
+                if (bindUser == null)
+                {
+                    RejectInvalid($"绑定用户不存在（bindUserId={openAccess.BindUserId}）");
+                    return Task.CompletedTask;
+                }
+                if (bindUser.Status != StatusEnum.Enable)
+                {
+                    RejectInvalid($"绑定用户已停用（bindUserId={openAccess.BindUserId}，status={bindUser.Status}）");
+                    return Task.CompletedTask;
+                }
+
                 var identity = ((ClaimsIdentity)context.Principal!.Identity!);
 
                 identity.AddClaims(
                 [
                     new Claim(ClaimConst.UserId, openAccess.BindUserId + ""),
                     new Claim(ClaimConst.TenantId, openAccess.BindTenantId + ""),
-                    new Claim(ClaimConst.Account, openAccess.BindUser.Account + ""),
-                    new Claim(ClaimConst.RealName, openAccess.BindUser.RealName),
-                    new Claim(ClaimConst.AccountType, ((int)openAccess.BindUser.AccountType).ToString()),
-                    new Claim(ClaimConst.OrgId, openAccess.BindUser.OrgId + ""),
-                    new Claim(ClaimConst.OrgName, openAccess.BindUser.SysOrg?.Name + ""),
-                    new Claim(ClaimConst.OrgType, openAccess.BindUser.SysOrg?.Type + ""),
-                    new Claim(ClaimConst.TokenVersion, openAccess.BindUser.TokenVersion + ""),
+                    new Claim(ClaimConst.Account, bindUser.Account + ""),
+                    new Claim(ClaimConst.RealName, bindUser.RealName),
+                    new Claim(ClaimConst.AccountType, ((int)bindUser.AccountType).ToString()),
+                    new Claim(ClaimConst.OrgId, bindUser.OrgId + ""),
+                    new Claim(ClaimConst.OrgName, bindUser.SysOrg?.Name + ""),
+                    new Claim(ClaimConst.OrgType, bindUser.SysOrg?.Type + ""),
+                    new Claim(ClaimConst.TokenVersion, bindUser.TokenVersion + ""),
                 ]);
 
                 // 把已校验的身份透出给业务层，业务不必再按 accessKey 反查一次库

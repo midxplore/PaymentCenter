@@ -66,6 +66,7 @@ public class PayMenuSeedData : ISqlSugarEntitySeedData<SysMenu>
             //   "payAccount/page" 不会命中 "/api/payAccount/typeOptions"，所以不挂就等于对任何已登录用户放行。
             //   字典本身不敏感，但「未纳入 RBAC 的接口」会让权限清单失去意义、审计也无法回答「谁调过」。
             new SysMenu{ Id=1300000000219, Pid=1300000000211, Title="类型选项", Permission="payAccount/typeOptions", Type=MenuTypeEnum.Btn, CreateTime=createTime, OrderNo=170 },
+            new SysMenu{ Id=1300000000220, Pid=1300000000211, Title="上传收款码", Permission="payAccount/uploadQr", Type=MenuTypeEnum.Btn, CreateTime=createTime, OrderNo=180 },
 
             //// 收款订单（F7.1 全生命周期 / F7.2 订单与账号双视角）
             new SysMenu{ Id=1300000000221, Pid=1300000000201, Title="收款订单", Path="/paycenter/order", Name="payOrder", Component="/paycenter/order/index", Icon="ele-Tickets", Type=MenuTypeEnum.Menu, CreateTime=createTime, OrderNo=110 },
