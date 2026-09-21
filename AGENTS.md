@@ -4,6 +4,21 @@
 > `.workbuddy-ai/memory/PROJECT-NOTES.md`，本文件不复述。
 > 核心心法：**本项目的坑几乎都是「静默」型** —— 不报错、测试全绿，但结果是错的。
 
+## 当前进度（2026-09-22）— 先读这段
+
+| 项 | 状态 |
+|---|---|
+| 需求 F1~F7 | **已实现**，`main` / `origin/main` @ `e12bee2` |
+| 对外 API | `allocate` / `notify` / `status`（签名 + `[PayScope]`；HTTP 恒 200，结果看 JSON `code`） |
+| 收款账号 | 支持**文本和/或收款码图片**（`QrImageUrl`）；编辑可改文本与图；上传 `payAccount/uploadQr` |
+| 开放接口凭证 | scopes fail-closed；停用凭证 / 停用绑定用户立即失效；入口拒绑停用用户 |
+| 金额 / 枚举出参 | 对外 DTO：金额两位小数字符串、枚举回名称（勿挂到后台 DTO） |
+| 生产部署 | 已按同机 nginx+systemd 上线；目录 **`/home/paymentcenter`**；手册在**本地** `doc/生产部署.md` |
+| `doc/`、`scripts/` | **gitignore，不入库**；本机仍有完整副本。改契约 / 跑守卫 / 回归仍读本地这两目录 |
+| 未做（不挡超管联调） | 退款、周期额度、多因子路由、IP 白名单、失败次数告警、出站 webhook；非超管菜单需人工验收 |
+
+下一会话默认假设：**功能已齐、生产可联调**；不要再按「半成品 / 待实现 QR / 待拆 Controller」开工。
+
 ## 0. 项目与结构
 
 - **是什么**：Admin.NET.Pro 裁剪版（.NET 8 + Furion.Pure 4.9.7.221 + SqlSugar），只保留一个业务模块 **PayCenter**（需求 F1~F7）。前端 Vue3 + Element Plus + Vite 7。
@@ -14,19 +29,19 @@
     把逻辑搬进控制器会让那些路径失去覆盖。因此 `PayAllocateService` / `PayNotifyService` **不实现** `IDynamicApiController`（守卫 §7c 会断言这一点）。
   - 裁剪现状：Application 层只剩框架 `Service/App/Auth` + PayCenter；**不要新增项目**，不要假设 Admin.NET 的示例业务模块还在。Core 是完整框架（Auth/Cache/Job/Menu/OpenAccess/Tenant/User…），可复用。
 - **前端**：`Web/src/views/` 同时有框架页面（`system/*`、`login`、`home`、`about`）与本项目页面（`paycenter/*`）。框架页面基本不改；`src/views/system/openAccess/` 是本项目改造过的（密钥脱敏 / 停用 / scopes）。
-- **脚本**：`scripts/` = 本地环境 + HTTP 回归 + schema 契约/守卫；`doc/` = 需求/设计/验收/本地环境；`.workbuddy-ai/memory/` = 项目长期记忆。
-- **Git**：已是 git 仓库，`main` 跟踪 `origin/main`（`git@github.com:midxplore/PaymentCenter.git`），初始导入提交 `c774e2b`。
-  ⚠️ 该提交是**整仓导入**（含当时的全部改动），所以「改动前 vs 改动后」要靠新提交区分，别把 `HEAD` 当成「框架原版」。
-- **协作方式**：AI 负责在本仓库做内容开发；用户通过**本地起服务**验证功能。因此「能跑起来 + 有可观察的现象」优先于「改得多」。
+- **脚本 / 文档（本地）**：`scripts/` = 环境 + HTTP 回归 + schema 守卫；`doc/` = 需求/设计/验收/本地环境/**生产部署**。二者**不进 git**，克隆仓库后需自备或从本机拷贝。
+- **记忆**：`.workbuddy-ai/memory/MEMORY.md`（热规则）+ `PROJECT-NOTES.md`（为什么）；日归档日志已清，勿再堆 `YYYY-MM-DD.md`。
+- **Git**：`main` → `origin/main`（`git@github.com:midxplore/PaymentCenter.git`）。
+- **协作方式**：AI 在本仓库改代码；用户本地/服务器验证。能跑 + 可观察优先于改得多。
 
 ## 1. 唯一事实来源（冲突时以此为准）
 
-1. **`doc/收款账号分配系统-技术设计方案.md`** —— 行为、接口契约、设计决策的唯一事实来源。**改实现前先读，改完回来更新它。**
-2. `scripts/paycenter-schema.sql` —— 期望 schema 的可执行契约（幂等 DDL，补 CodeFirst 不做的列宽/精度纠偏）。
-3. `scripts/pay_schema_guard.py` —— 漂移守卫（schema + 源码级安全不变式，退出码可挂 CI）。**改实体/入参 DTO 必跑。**
-4. `.workbuddy-ai/memory/MEMORY.md`（热规则，**接近注入上限**，新增内容写 `PROJECT-NOTES.md`）+ `PROJECT-NOTES.md`（为什么）。
-5. `doc/本地开发环境.md`（怎么跑 / 故障速查）、`doc/S7-验收报告.md`（验收证据与已修缺陷）。
-6. 更早一版同系统在 `/Users/Working/Project/Agent/Payment-Center`（`Payment.Application` 已实现签名鉴权/过期作业/异常台账/导出/后台列表）—— 做相关功能前先读，不要从零写。
+1. **本文件 `AGENTS.md`** —— Agent 硬约束与**当前进度**（入库）。
+2. **本地** `doc/收款账号分配系统-技术设计方案.md` —— 行为与接口契约细节（改实现前先读、改完更新；**不入库**）。
+3. **本地** `scripts/paycenter-schema.sql` + `scripts/pay_schema_guard.py` —— schema / 源码不变式（**不入库**，改实体必跑守卫）。
+4. `.workbuddy-ai/memory/MEMORY.md` + `PROJECT-NOTES.md` —— 热规则与长篇为什么（不入库）。
+5. **本地** `doc/生产部署.md` —— 全新服务器首次上线手册；`doc/本地开发环境.md` —— 本机怎么跑。
+6. 更早一版参考：`/Users/Working/Project/Agent/Payment-Center`（相关功能先读，勿从零写）。
 
 ## 2. 命令（路径都不在 PATH，照抄）
 
@@ -38,7 +53,7 @@
 | 构建 | `/usr/local/share/dotnet/dotnet build Admin.NET/Admin.NET.sln`（基线 0 warning / 0 error） |
 | 单元测试（走真实 PG，**约 8 分钟**） | `/usr/local/share/dotnet/dotnet test Admin.NET/Admin.NET.Test/Admin.NET.Test.csproj`（宿主自行设 `ASPNETCORE_ENVIRONMENT=Development`） |
 | schema 守卫（改实体/DTO 必跑） | `~/.workbuddy-ai/binaries/python/envs/default/bin/python scripts/pay_schema_guard.py` |
-| 全量 HTTP 回归 | `scripts/regress-all.sh --with-login`（自动关验证码 → **串行**跑 4 脚本 → 保证还原 → 守卫自验；退出码 2 = 前置不满足，**不是通过**） |
+| 全量 HTTP 回归 | `scripts/regress-all.sh --with-login`（自动关验证码 → **串行**跑回归脚本 → 保证还原 → 守卫自验；退出码 2 = 前置不满足，**不是通过**） |
 | 前端类型检查（**必跑**，闸门必须 0 错） | `cd Web && env -u NODE_OPTIONS npm run typecheck`（全量：`npm run typecheck:all`） |
 | 前端构建 | `cd Web && env -u NODE_OPTIONS npm run build` |
 | 查库 | `docker exec paymentcenter-pg psql -U payment -d paymentcenter -tAc "<SQL>"` |

@@ -32,28 +32,30 @@
 ## 快速开始
 
 ```bash
+# 需本机仍有 scripts/（不入库；从本机拷贝或历史保留）
 scripts/dev-up.sh                                  # 库 → 构建 → 后端 → schema 纠偏 → 守卫
 cd Web && env -u NODE_OPTIONS npm run dev          # http://localhost:8888
-scripts/dev-down.sh                                # 停止（--with-db 连库一起停）
-scripts/regress-all.sh --with-login                # 全量 HTTP 回归（串行跑 4 个脚本）
+scripts/dev-down.sh
+scripts/regress-all.sh --with-login                # 全量 HTTP 回归
 ```
 
-> 路径坑（dotnet / docker / npm / python 都不在 PATH 上）、时区要求与故障速查见 [doc/本地开发环境.md](doc/本地开发环境.md)。
+> 路径坑、时区、故障速查：本地 `doc/本地开发环境.md`。生产首次上线：本地 `doc/生产部署.md`。
+> Agent 入口与**当前进度**：**[AGENTS.md](AGENTS.md)**。
 
-## 文档
+## 文档与脚本（多数仅本地）
 
-| 文档 | 用途 |
-|---|---|
-| **[AGENTS.md](AGENTS.md)** | **在本仓库工作的第一入口**：硬约束、命令表、「静默失效」清单 |
-| [技术设计方案](doc/收款账号分配系统-技术设计方案.md) | **唯一事实来源**：行为、接口契约、设计决策 |
-| [功能需求文档 V3](doc/收款账号分配系统-功能需求文档-V3.md) | 需求原文 |
-| [本地开发环境](doc/本地开发环境.md) | 怎么跑、故障速查 |
-| [S7 验收报告](doc/S7-验收报告.md) | 验收证据与已修缺陷 |
-| [scripts/paycenter-schema.sql](scripts/paycenter-schema.sql) | 期望 schema 的可执行契约（幂等 DDL） |
-| [scripts/pay_schema_guard.py](scripts/pay_schema_guard.py) | schema 漂移 + 源码安全不变式守卫（退出码可挂 CI） |
+| 位置 | 用途 | Git |
+|---|---|---|
+| **[AGENTS.md](AGENTS.md)** | Agent 硬约束 + 当前进度 | 入库 |
+| `doc/*` | 需求 / 设计 / 验收 / 本地环境 / **生产部署** | **不入库**（gitignore） |
+| `scripts/*` | 起停环境、schema 守卫、HTTP 回归、发布脚本 | **不入库**（gitignore） |
+| `.workbuddy-ai/memory/` | MEMORY + PROJECT-NOTES | **不入库** |
 
-> ⚠️ 连接串在 `Admin.NET/Admin.NET.Application/Configuration/Database.json`（**唯一来源**）。
-> 该文件会**随发布分发**，部署时必须替换为生产连接串，切勿直接用于生产。
+## 配置
+
+- 基线 `Admin.NET.Application/Configuration/Database.json`：**占位** PostgreSQL + Init 关闭（随发布分发）
+- 本地 `Database.Development.json`：真实开发库（**gitignore**）
+- 生产：改服务器上发布目录内的 `Configuration/Database.json`（见本地生产部署手册）
 
 ---
 
