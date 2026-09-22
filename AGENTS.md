@@ -4,21 +4,6 @@
 > `.workbuddy-ai/memory/PROJECT-NOTES.md`，本文件不复述。
 > 核心心法：**本项目的坑几乎都是「静默」型** —— 不报错、测试全绿，但结果是错的。
 
-## 当前进度（2026-09-22）— 先读这段
-
-| 项 | 状态 |
-|---|---|
-| 需求 F1~F7 | **已实现**，`main` / `origin/main` @ `e12bee2` |
-| 对外 API | `allocate` / `notify` / `status`（签名 + `[PayScope]`；HTTP 恒 200，结果看 JSON `code`） |
-| 收款账号 | 支持**文本和/或收款码图片**（`QrImageUrl`）；编辑可改文本与图；上传 `payAccount/uploadQr` |
-| 开放接口凭证 | scopes fail-closed；停用凭证 / 停用绑定用户立即失效；入口拒绑停用用户 |
-| 金额 / 枚举出参 | 对外 DTO：金额两位小数字符串、枚举回名称（勿挂到后台 DTO） |
-| 生产部署 | 已按同机 nginx+systemd 上线；目录 **`/home/paymentcenter`**；手册在**本地** `doc/生产部署.md` |
-| `doc/`、`scripts/` | **gitignore，不入库**；本机仍有完整副本。改契约 / 跑守卫 / 回归仍读本地这两目录 |
-| 未做（不挡超管联调） | 退款、周期额度、多因子路由、IP 白名单、失败次数告警、出站 webhook；非超管菜单需人工验收 |
-
-下一会话默认假设：**功能已齐、生产可联调**；不要再按「半成品 / 待实现 QR / 待拆 Controller」开工。
-
 ## 0. 项目与结构
 
 - **是什么**：Admin.NET.Pro 裁剪版（.NET 8 + Furion.Pure 4.9.7.221 + SqlSugar），只保留一个业务模块 **PayCenter**（需求 F1~F7）。前端 Vue3 + Element Plus + Vite 7。
@@ -29,18 +14,18 @@
     把逻辑搬进控制器会让那些路径失去覆盖。因此 `PayAllocateService` / `PayNotifyService` **不实现** `IDynamicApiController`（守卫 §7c 会断言这一点）。
   - 裁剪现状：Application 层只剩框架 `Service/App/Auth` + PayCenter；**不要新增项目**，不要假设 Admin.NET 的示例业务模块还在。Core 是完整框架（Auth/Cache/Job/Menu/OpenAccess/Tenant/User…），可复用。
 - **前端**：`Web/src/views/` 同时有框架页面（`system/*`、`login`、`home`、`about`）与本项目页面（`paycenter/*`）。框架页面基本不改；`src/views/system/openAccess/` 是本项目改造过的（密钥脱敏 / 停用 / scopes）。
-- **脚本 / 文档（本地）**：`scripts/` = 环境 + HTTP 回归 + schema 守卫；`doc/` = 需求/设计/验收/本地环境/**生产部署**。二者**不进 git**，克隆仓库后需自备或从本机拷贝。
-- **记忆**：`.workbuddy-ai/memory/MEMORY.md`（热规则）+ `PROJECT-NOTES.md`（为什么）；日归档日志已清，勿再堆 `YYYY-MM-DD.md`。
+- **脚本 / 文档**：`scripts/`、`doc/` 只在本机（**gitignore，不入库**）。改契约、跑守卫/回归、查部署手册仍用本地副本；克隆后需自备。
+- **记忆**：`.workbuddy-ai/memory/MEMORY.md`（热规则）+ `PROJECT-NOTES.md`（为什么）；新增写 NOTES，勿堆日流水账。
 - **Git**：`main` → `origin/main`（`git@github.com:midxplore/PaymentCenter.git`）。
 - **协作方式**：AI 在本仓库改代码；用户本地/服务器验证。能跑 + 可观察优先于改得多。
 
 ## 1. 唯一事实来源（冲突时以此为准）
 
-1. **本文件 `AGENTS.md`** —— Agent 硬约束与**当前进度**（入库）。
-2. **本地** `doc/收款账号分配系统-技术设计方案.md` —— 行为与接口契约细节（改实现前先读、改完更新；**不入库**）。
-3. **本地** `scripts/paycenter-schema.sql` + `scripts/pay_schema_guard.py` —— schema / 源码不变式（**不入库**，改实体必跑守卫）。
+1. **本文件 `AGENTS.md`** —— Agent 硬约束（入库）。
+2. **本地** `doc/收款账号分配系统-技术设计方案.md` —— 行为与接口契约（改实现前先读、改完更新；不入库）。
+3. **本地** `scripts/paycenter-schema.sql` + `scripts/pay_schema_guard.py` —— schema / 源码不变式（不入库，改实体必跑守卫）。
 4. `.workbuddy-ai/memory/MEMORY.md` + `PROJECT-NOTES.md` —— 热规则与长篇为什么（不入库）。
-5. **本地** `doc/生产部署.md` —— 全新服务器首次上线手册；`doc/本地开发环境.md` —— 本机怎么跑。
+5. **本地** `doc/生产部署.md` / `doc/本地开发环境.md` —— 上线与本机怎么跑。
 6. 更早一版参考：`/Users/Working/Project/Agent/Payment-Center`（相关功能先读，勿从零写）。
 
 ## 2. 命令（路径都不在 PATH，照抄）
@@ -174,21 +159,19 @@
 - 本地数据库仍可用 `docker/docker-compose.pg.yml`（PostgreSQL 16，`127.0.0.1:55432`，`trust`）；但**连库的配置只有一处目录**：`Admin.NET.Application/Configuration/` —— 基线 `Database.json`（占位地址 + 初始化关闭）与 `Database.Development.json`（本地开发，指向当前远程开发库），见 §3。
 - 生产：**必须 `TZ=Asia/Shanghai`**；PG 改 `scram-sha-256` + 独立密钥管理（本地是 `trust`，仅开发用）；TLS 需自行终结（原 nginx 示例配置与占位证书已随脚手架删除），上线前必须用真实证书。
 
-## 6. 支付系统安全红线 / 已知残余风险（评审结论，2026-09-18）
+## 6. 支付系统安全红线 / 残余风险
 
-**已守住、不要回退的**（`pay_schema_guard.py` 有对应断言）：跨调用方幂等隔离、`status` 归属校验、密钥 getter 脱敏 + 停用即失效、签名 `FixedTimeEquals`、scope fail-closed、认证失败 / 资金动作双线审计、`(clientid, voucherno)` 通知去重、阻塞式 `FOR UPDATE` 不超发。
+**不要回退**（`pay_schema_guard.py` 有断言）：跨调用方幂等隔离、`status` 归属校验、密钥 getter 脱敏 + 停用即失效、签名 `FixedTimeEquals`、scope fail-closed、认证失败 / 资金动作双线审计、`(clientid, voucherno)` 通知去重、阻塞式 `FOR UPDATE` 不超发。
 
-**仍存在的风险 / 待办**：
+**仍须注意**：
 
-1. **F6.3 全链路 HTTPS 未在应用层强制**：本地与 `dev-up.sh` 都是 http；生产靠 nginx 443 终结 TLS。需确认 HTTP→HTTPS 跳转 / HSTS 与真实证书。
-2. **F6.5 告警不足**：只有 `OnChallenge` 的 Warning 文本日志 + `/api/pay/*` 限流；**无失败次数阈值告警**（设计明确不在本期）。上线前建议补告警规则。
-3. **F6.4 账号信息有意不脱敏**（决策 #1：调用方必须拿完整账号才能收款）→ 保护完全依赖签名鉴权 + 后台 RBAC。**日志 / 事件流水只落 AccountId**；任何把 `accountInfo` 写进日志/审计的改动都是安全回归。
-4. **三方（银行 / 渠道）联调未做**；`accessKey/secretKey` 的下发与轮换流程未定。
-5. **非超管角色的菜单拦截未被回归覆盖**（超管免授权，探针用超管身份）；需人工建普通角色验收。
-6. ~~无 git 历史 → 不可回滚~~ **已完成**（2026-09-18）：已初始化 git 并推送到 `git@github.com:midxplore/PaymentCenter.git`。
-7. 本地 PG `trust` 认证 + 仅绑 127.0.0.1（开发专用，勿照搬生产）。
-8. 权限黑名单模型下，**漏挂按钮权限 = 对任何已登录用户开放**；守卫 §8 有断言，但新增接口仍需人补种子。
-9. 金额精度纠偏（scale 变小）会改写已有数据 → 执行 `paycenter-schema.sql` 前先备份。
+1. **HTTPS**：应用层不强制；生产靠 nginx 443。勿把 5005 暴露公网。
+2. **告警**：仅有 `OnChallenge` Warning + `/api/pay/*` 限流；无失败次数阈值告警（本期不做）。
+3. **账号不脱敏**（决策）：保护依赖签名 + RBAC；**日志/审计只落 AccountId**，勿写 `accountInfo` / 图片路径。
+4. **非超管菜单**：超管免授权，普通角色拦截需人工验收。
+5. 本地 PG `trust` + 仅绑 127.0.0.1（勿照搬生产）。
+6. 权限黑名单：漏挂按钮权限 = 对任何已登录用户开放；新增接口须补种子。
+7. 金额精度 scale 变小会改写已有数据 → 执行 `paycenter-schema.sql` 前先备份。
 - **隐藏菜单必须「整棵子树都标 `IsHide=true`」**：侧边栏 `aside.vue` 的 `filterRoutesFun` 是**递归**过滤（隐藏目录即隐藏子树），但顶部**菜单搜索**用的是 `formatFlatteningRoutes` 拍平后的**一维**列表、逐项判 `isHide` —— 只隐藏目录会让子项**仍被搜到并能点进去**。且 `SysMenuSeedData` 带 `[IgnoreUpdateSeed]`，**改种子不会更新已有行**（实测：加 `IsHide=true` 后重启，活库 `ishide` 仍为 `false`，日志显示「更新 000 条」），现有库必须显式 `UPDATE sysmenu SET ishide=true WHERE id IN (...)`。守卫 §6b 断言「种子标隐藏的菜单活库也隐藏」+「隐藏项的子项也隐藏」。
 - **凭证失效有三个开关**：停用凭证、**停用绑定用户**（`OnValidated` 校验 `BindUser.Status`）、重新生成密钥。三者对外**统一报「accessKey 无效」**（与不存在不可区分）。★ 校验绑定用户必须走 `GetBindUserAsync`（**每次读库**）——`GetByKey` 缓存长期不过期（实测 20s 仍是旧值），用缓存快照判启用会让「停用用户」**静默不生效**。
 - **鉴权链路上任何「可能为 null 的关联对象」都必须判空**：原先 `openAccess.BindUser.Account` 在用户不存在时抛 NRE，而鉴权中间件里的 NRE 会变成 **HTTP 500 + 堆栈**（响应体含服务器文件路径、非 JSON）。

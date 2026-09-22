@@ -40,13 +40,13 @@ scripts/regress-all.sh --with-login                # 全量 HTTP 回归
 ```
 
 > 路径坑、时区、故障速查：本地 `doc/本地开发环境.md`。生产首次上线：本地 `doc/生产部署.md`。
-> Agent 入口与**当前进度**：**[AGENTS.md](AGENTS.md)**。
+> Agent 入口：**[AGENTS.md](AGENTS.md)**（只写硬约束，不写进度表）。
 
 ## 文档与脚本（多数仅本地）
 
 | 位置 | 用途 | Git |
 |---|---|---|
-| **[AGENTS.md](AGENTS.md)** | Agent 硬约束 + 当前进度 | 入库 |
+| **[AGENTS.md](AGENTS.md)** | Agent 硬约束（不写已落实进度） | 入库 |
 | `doc/*` | 需求 / 设计 / 验收 / 本地环境 / **生产部署** | **不入库**（gitignore） |
 | `scripts/*` | 起停环境、schema 守卫、HTTP 回归、发布脚本 | **不入库**（gitignore） |
 | `.workbuddy-ai/memory/` | MEMORY + PROJECT-NOTES | **不入库** |
