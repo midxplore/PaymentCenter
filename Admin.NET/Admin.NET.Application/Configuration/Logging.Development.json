@@ -1,0 +1,33 @@
+{
+  "$schema": "https://gitee.com/dotnetchina/Furion/raw/v4/schemas/v4/furion-schema.json",
+
+  // 仅 Development 叠加（本地 / 单元测试宿主）。结构与 Logging.json 对齐，便于按文件整段覆盖。
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning",
+      "Microsoft.EntityFrameworkCore": "Information",
+      "AspNetCoreRateLimit": "None",
+      "System.Net.Http.HttpClient": "Warning",
+      "ReZero.SuperAPI.SuperAPIMiddleware": "Warning"
+    },
+    "File": {
+      "Enabled": true,
+      "FileName": "logs/{0:yyyyMMdd}_{1}.log",
+      "Append": true,
+      "MinimumLevel": "Information",
+      "FileSizeLimitBytes": 10485760,
+      "MaxRollingFiles": 30
+    },
+    "Database": {
+      "Enabled": true,
+      "MinimumLevel": "Information"
+    },
+    "Monitor": {
+      "GlobalEnabled": false,
+      "BahLogLevel": "Information",
+      "WithReturnValue": true,
+      "ConsoleLog": true
+    }
+  }
+}

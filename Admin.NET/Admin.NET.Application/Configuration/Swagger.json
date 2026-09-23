@@ -34,9 +34,10 @@
       "Enabled": true, // 是否开启Swagger登录
       "CheckUrl": "/api/swagger/checkUrl",
       "SubmitUrl": "/api/swagger/submitUrl",
+      // 生产由 App.json InjectSpecificationDocument=false 整段关掉 Swagger；此处再 fail-closed
       "EnableOnProduction": false, // 是否在生产环境中自动开启
-      "DefaultUsername": "superLang", // 默认用户名，生产环境注意账密泄漏
-      "DefaultPassword": "Langya.18" // 默认密码，生产环境注意账密泄漏
+      "DefaultUsername": "", // 默认用户名，生产环境注意账密泄漏（生产留空）
+      "DefaultPassword": "" // 默认密码，生产环境注意账密泄漏（生产留空）
     },
     "EnumToNumber": true // 枚举类型生成值类型
   }

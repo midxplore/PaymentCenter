@@ -22,6 +22,7 @@ using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
+using Microsoft.IdentityModel.Tokens;
 using MQTTnet.AspNetCore;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
@@ -71,23 +72,29 @@ public class Startup : AppStartup
                 },
                 OnAuthenticationFailed = context =>
                 {
-                    var httpContext = context.HttpContext;
-                    var authHeader = httpContext.Request.Headers.Authorization.ToString();
-                    string token = null;
-                    if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-                        token = authHeader.Substring("Bearer ".Length).Trim();
-                    else if (httpContext.Request.Query.ContainsKey("token"))
-                        token = httpContext.Request.Query["token"];
-                    else if (httpContext.Request.Query.ContainsKey("access_token"))
-                        token = httpContext.Request.Query["access_token"];
-                    Log.Error($"JWT Failed Path={httpContext.Request.Path} TokenLen={token?.Length} Error={context.Exception?.Message}\nToken={token}", context.Exception);
+                    var path = context.HttpContext.Request.Path;
+                    var ex = context.Exception;
+                    // SignalR / 浏览器常拿过期 JWT 重连（更新部署、闲置超时后尤甚）。
+                    // 这是预期失败路径：不记 Error、不落 Token 全文（避免日志泄凭证）。
+                    if (ex is SecurityTokenExpiredException expired)
+                    {
+                        Log.Debug("JWT expired Path={Path} ValidTo(UTC)={ValidTo:u}",
+                            path, expired.Expires);
+                    }
+                    else
+                    {
+                        Log.Warning("JWT Failed Path={Path} Error={Error}",
+                            path, ex?.Message);
+                    }
                     return Task.CompletedTask;
                 },
                 OnChallenge = context =>
                 {
+                    // 不打印 Authorization 头全文
                     var httpContext = context.HttpContext;
-                    var authHeader = httpContext.Request.Headers.Authorization.ToString();
-                    Log.Warning($"JWT Challenge Path={httpContext.Request.Path} Auth={(string.IsNullOrEmpty(authHeader) ? "<empty>" : "{authHeader}")}\nError={context.Error} Desc={context.ErrorDescription}");
+                    var hasAuth = !string.IsNullOrEmpty(httpContext.Request.Headers.Authorization.ToString());
+                    Log.Debug("JWT Challenge Path={Path} HasAuth={HasAuth} Error={Error}",
+                        httpContext.Request.Path, hasAuth, context.Error);
                     return Task.CompletedTask;
                 }
             };

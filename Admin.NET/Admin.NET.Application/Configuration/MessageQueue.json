@@ -2,6 +2,7 @@
   "$schema": "https://gitee.com/dotnetchina/Furion/raw/v4/schemas/v4/furion-schema.json",
 
   // 事件源存储器配置
+  // ★ 本项目事件总线用内存；RabbitMQ 未启用，占位勿填真实口令
   "EventBus": {
     // 事件源存储器类型，默认内存存储（Redis则需要配合缓存相关配置）
     "EventSourceType": "Memory" // Memory、Redis、RabbitMQ、Kafka
@@ -9,8 +10,8 @@
 
   // RabbitMQ 配置
   "RabbitMQ": {
-    "UserName": "paymentcenter",
-    "Password": "b2dRlKONOUAPkXA_",
+    "UserName": "",
+    "Password": "",
     "HostName": "127.0.0.1",
     "Port": 5672,
     "VirtualHost": "/"

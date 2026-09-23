@@ -3,6 +3,7 @@
 
   "JWTSettings": {
     "ValidateIssuerSigningKey": true, // 是否验证密钥，bool 类型，默认true
+    // ★ 与现网一致；覆盖配置时勿擅自更换，否则所有已登录会话立即失效
     "IssuerSigningKey": "7de0e1c588c91164f11551bf97c923475da439b1eee62b92e4b50ab253e4c051", // 密钥，string 类型，必须是复杂密钥，长度大于16，.NET8+ 长度需大于 32，推荐MD5直接生成
     "ValidateIssuer": true, // 是否验证签发方，bool 类型，默认true
     "ValidIssuer": "PaymentCenter", // 签发方，string 类型

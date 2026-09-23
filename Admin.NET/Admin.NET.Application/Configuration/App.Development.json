@@ -1,6 +1,11 @@
 {
   "$schema": "https://gitee.com/dotnetchina/Furion/raw/v4/schemas/v4/furion-schema.json",
 
+  // 仅 Development 叠加：本机可从局域网访问，并开 Swagger。
+  "Urls": "http://*:5005", // 默认端口
+  "AppSettings": {
+    "InjectSpecificationDocument": true // 生产环境是否开启Swagger（Development 打开）
+  },
   // 定时任务/作业调度
   "JobSchedule": {
     "Enabled": true // 是否开启

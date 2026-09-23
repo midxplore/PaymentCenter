@@ -1,16 +1,16 @@
 ﻿{
   "$schema": "https://gitee.com/dotnetchina/Furion/raw/v4/schemas/v4/furion-schema.json",
 
-  "HttpProxy": { // 代理配置
+  "HttpProxy": { // 代理配置（生产默认关；需要时代理地址再填）
     "Encrypt": false,
     "MaxRetries": 3,
-    "Address": "http://route.xiongmaodaili.com/xxxxxxxx",
+    "Address": "",
     "Account": "",
     "Password": ""
   },
   "HttpRemote": {
     "WorkWeixin": { // 企业微信
-      "EnabledLog": true,
+      "EnabledLog": false, // 生产默认关请求明细；临时排障可改 true
       "UseCookies": false,
       "EnabledProxy": false,
       "HttpName": "WORK_WEIXIN",
