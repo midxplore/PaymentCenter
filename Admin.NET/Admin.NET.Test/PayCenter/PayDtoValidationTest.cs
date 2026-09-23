@@ -31,7 +31,7 @@ public class PayDtoValidationTest
     [Fact]
     public void AllocateInput_合法入参_应通过()
     {
-        Assert.True(IsValid(new AllocateInput { Type = "wxpay", Amount = 0.01m }));
+        Assert.True(IsValid(new AllocateInput { Type = "wxpay", Amount = 0.01m, ExternalNo = "EXT-1" }));
         Assert.True(IsValid(new AllocateInput { Type = "bank", Amount = 100m, ExternalNo = "EXT-1" }));
     }
 
@@ -41,22 +41,21 @@ public class PayDtoValidationTest
     [InlineData("   ")]
     public void AllocateInput_收款类型为空_应失败(string type)
     {
-        Assert.False(IsValid(new AllocateInput { Type = type, Amount = 10m }));
+        Assert.False(IsValid(new AllocateInput { Type = type, Amount = 10m, ExternalNo = "EXT-1" }));
     }
 
-    [Theory]
-    [InlineData(0)]
-    [InlineData(-0.01)]
-    [InlineData(-100)]
-    public void AllocateInput_金额非正_应失败(double amount)
+    [Fact]
+    public void AllocateInput_金额非正_不由DataAnnotations拦截_交服务层API_AMOUNT_INVALID()
     {
-        Assert.False(IsValid(new AllocateInput { Type = "wxpay", Amount = (decimal)amount }));
+        // 0/负数若挂 [Range]，MVC 会回字段级 {"Amount":[...]}，不含 API_AMOUNT_INVALID。
+        Assert.True(IsValid(new AllocateInput { Type = "wxpay", Amount = 0m, ExternalNo = "EXT-0" }));
+        Assert.True(IsValid(new AllocateInput { Type = "wxpay", Amount = -1m, ExternalNo = "EXT-NEG" }));
     }
 
     [Fact]
     public void AllocateInput_收款类型超长_应失败()
     {
-        Assert.False(IsValid(new AllocateInput { Type = new string('x', 33), Amount = 10m }));
+        Assert.False(IsValid(new AllocateInput { Type = new string('x', 33), Amount = 10m, ExternalNo = "EXT-1" }));
     }
 
     [Fact]
@@ -66,9 +65,10 @@ public class PayDtoValidationTest
     }
 
     [Fact]
-    public void AllocateInput_外部单号可省略_幂等键为可选()
+    public void AllocateInput_外部单号为空_应失败()
     {
-        Assert.True(IsValid(new AllocateInput { Type = "wxpay", Amount = 10m, ExternalNo = null }));
+        Assert.False(IsValid(new AllocateInput { Type = "wxpay", Amount = 10m, ExternalNo = null }));
+        Assert.False(IsValid(new AllocateInput { Type = "wxpay", Amount = 10m, ExternalNo = "" }));
     }
 
     #endregion AllocateInput（F2）

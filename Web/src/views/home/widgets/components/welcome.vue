@@ -32,21 +32,20 @@
 	</el-card>
 </template>
 
-<script setup lang="ts" name="welcome">
-</script>
-
 <script lang="ts">
-import { storeToRefs } from 'pinia';
-import { useThemeConfig } from '/@/stores/themeConfig';
-
-const storesThemeConfig = useThemeConfig();
-const { themeConfig } = storeToRefs(storesThemeConfig);
-
 export default {
 	title: 'Welcome',
 	icon: 'ele-Promotion',
 	description: '项目特色以及文档链接',
 };
+</script>
+
+<script setup lang="ts" name="welcome">
+import { storeToRefs } from 'pinia';
+import { useThemeConfig } from '/@/stores/themeConfig';
+
+const storesThemeConfig = useThemeConfig();
+const { themeConfig } = storeToRefs(storesThemeConfig);
 </script>
 
 <style scoped>

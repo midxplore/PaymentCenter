@@ -61,12 +61,14 @@
 - 调用方身份只有一个来源 `PayCallerContext.RequireClientId`，**禁止 `?? 0` 兜底**（退化成 0 会让所有接入方共享去重命名空间 → A 的凭证号静默去重掉 B 的到账通知）。
 - 幂等键唯一索引是 **`(clientid, externalno)` 复合**，查询必须带 `ClientId`（幂等查询只有一处实现）。
 - `notify` 刻意**不**按 ClientId 过滤（渠道不建单）；`allocate` / `status` 必须隔离。`status` 的「查无此单」与「不是你的单」返回同一个 `API_ORDER_NOT_FOUND`。
-- 对外路由 `/api/pay/{allocate,notify,status}` 必须 `[Authorize(Signature)] + [PayScope(...)]`；新增 `/api/pay*` 接口忘写 `[PayScope]` 会被 `ScopeUnclassified` fail-closed 拒绝（**不要**改回返回 null）。
+- 对外路由 `/api/pay/{allocate,status}` 必须 `[Authorize(Signature)] + [PayScope(...)]`；新增 `/api/pay*` 接口忘写 `[PayScope]` 会被 `ScopeUnclassified` fail-closed 拒绝（**不要**改回返回 null）。对外 `/api/pay/notify` 已下线，到账走后台确认 + Webhook。
 - **密钥出参必须在 getter 层脱敏**（掩码 `****`）；**「掩码 = 不改」**；改 accessKey 要**同时清新旧两个缓存**；停用凭证返回空密钥（与「无效 key」不可区分）。签名比较用 `FixedTimeEquals`。
+- ★★ **开放接口 HMAC 待签名文本含正文哈希**：`METHOD&PATH&accessKey&timestamp&nonce&BODY_SHA256_HEX`（小写 hex；无正文对空字节取哈希）。只签头不签体会让中间人改金额仍过验签——**不要回退**。哈希必须对「线上实际发送的字节」计算；`EnableBuffering` 后复位 Body 供模型绑定。
 - **审计两条线**：认证失败（401 在 MVC 之前，`SysLogOp` 采不到）走 `IOpenAccessAuditSink` → `pay_audit_log(action=ApiAuthFailure)`，**必须吞掉所有异常、只记带 accessKey 的失败、写入前按列宽截断**；资金动作走 `PayAuditService.WriteOpenApiAsync`（**同事务**），只读的 `status` 不审计。
 - `pay_audit_log` / `pay_order_event` **只增不改**，无 update/delete 接口。
 
 ### 对外接口契约（改动前必读，`doc/对外接口API文档.md` 与设计文档 §7 必须同步）
+- 对外文档**只**含签名约定 + `/api/pay/{allocate,status,notify}`；凭证创建/停用/换密写在内部 `doc/开放接口凭证操作手册.md`，勿写进对外版。
 - ★★ **所有响应（含失败）HTTP 传输状态都是 `200`**，真实结果在 JSON `code` 里（认证失败 `code=401`、冲突 `409`、参数错 `400` 全是 HTTP 200，已用 curl 独立验证）。改接口时**不要**试图去调 HTTP 状态码；文档里写「HTTP 401」是错的。
 - ★★ **对外金额一律是十进制字符串，且固定两位小数**（`AmountStringConverter`：`1.2` → `"1.20"`、`100` → `"100.00"`；入参兼容数字）。格式串由 `PayConst.AmountScale` 推导，**不要写死字面量**。JSON 数字会被接入方用双精度浮点解析（仅 15~17 位有效数字）而**静默失真**；固定位数则是为了对账时能逐笔文本比对。
 - ★★ **对外枚举一律回名称**（`EnumNameConverter`，`status`/`orderStatus` → `Pending/Partial/Completed/Expired`）。数字仅供后台管理界面用。**转换器只挂对外 DTO，不挂后台 DTO**（后者与前端下拉契约绑定）。
@@ -161,7 +163,7 @@
 
 ## 6. 支付系统安全红线 / 残余风险
 
-**不要回退**（`pay_schema_guard.py` 有断言）：跨调用方幂等隔离、`status` 归属校验、密钥 getter 脱敏 + 停用即失效、签名 `FixedTimeEquals`、scope fail-closed、认证失败 / 资金动作双线审计、`(clientid, voucherno)` 通知去重、阻塞式 `FOR UPDATE` 不超发。
+**不要回退**（`pay_schema_guard.py` 有断言）：跨调用方幂等隔离、`status` 归属校验、密钥 getter 脱敏 + 停用即失效、签名 `FixedTimeEquals` + **正文 SHA-256 纳入待签名文本**、scope fail-closed、认证失败 / 资金动作双线审计、`(clientid, voucherno)` 通知去重、阻塞式 `FOR UPDATE` 不超发。
 
 **仍须注意**：
 
@@ -172,6 +174,7 @@
 5. 本地 PG `trust` + 仅绑 127.0.0.1（勿照搬生产）。
 6. 权限黑名单：漏挂按钮权限 = 对任何已登录用户开放；新增接口须补种子。
 7. 金额精度 scale 变小会改写已有数据 → 执行 `paycenter-schema.sql` 前先备份。
-- **隐藏菜单必须「整棵子树都标 `IsHide=true`」**：侧边栏 `aside.vue` 的 `filterRoutesFun` 是**递归**过滤（隐藏目录即隐藏子树），但顶部**菜单搜索**用的是 `formatFlatteningRoutes` 拍平后的**一维**列表、逐项判 `isHide` —— 只隐藏目录会让子项**仍被搜到并能点进去**。且 `SysMenuSeedData` 带 `[IgnoreUpdateSeed]`，**改种子不会更新已有行**（实测：加 `IsHide=true` 后重启，活库 `ishide` 仍为 `false`，日志显示「更新 000 条」），现有库必须显式 `UPDATE sysmenu SET ishide=true WHERE id IN (...)`。守卫 §6b 断言「种子标隐藏的菜单活库也隐藏」+「隐藏项的子项也隐藏」。
+- **菜单对角色可见性用「角色管理 → 菜单权限」控制，不要用 `IsHide` 藏「开发工具 / 关于项目」**：`IsHide` 是侧边栏 `meta.isHide` 过滤，超管 `GetLoginMenuTree` 虽返回全量，前端仍会藏掉 → **超管也看不到**。正确：种子保持默认可见；普通角色取消勾选即可；超管默认能看到。`SysMenuSeedData` 带 `[IgnoreUpdateSeed]`，改种子不更新已有行 —— 若活库曾被标隐藏，须显式 `UPDATE sysmenu SET ishide=false WHERE id IN (1310000000601,1310000000611,1310000000621,1310000000631,1310000000641,1310000000651,1320000000201)`。守卫 §6b 断言这组菜单种子与活库均未隐藏。若其它菜单确需 `IsHide`，目录下子项也必须一起隐藏（菜单搜索逐项判 `isHide`，只藏目录会漏）。
+- **前端重依赖按需加载、不删代码**：`main.ts` 不全局挂 VForm3 / hiprint / tree-org / signature / grid-layout / animate.css；进对应页再经 `Web/src/utils/lazyFrameworkPlugins.ts` 注册。页面与 `package.json` 依赖保留，避免「裁掉」变成删功能。
 - **凭证失效有三个开关**：停用凭证、**停用绑定用户**（`OnValidated` 校验 `BindUser.Status`）、重新生成密钥。三者对外**统一报「accessKey 无效」**（与不存在不可区分）。★ 校验绑定用户必须走 `GetBindUserAsync`（**每次读库**）——`GetByKey` 缓存长期不过期（实测 20s 仍是旧值），用缓存快照判启用会让「停用用户」**静默不生效**。
 - **鉴权链路上任何「可能为 null 的关联对象」都必须判空**：原先 `openAccess.BindUser.Account` 在用户不存在时抛 NRE，而鉴权中间件里的 NRE 会变成 **HTTP 500 + 堆栈**（响应体含服务器文件路径、非 JSON）。

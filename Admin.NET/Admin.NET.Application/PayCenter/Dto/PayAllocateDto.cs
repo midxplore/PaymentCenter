@@ -23,21 +23,19 @@ public class AllocateInput
     public string Type { get; set; }
 
     /// <summary>
-    /// 收款金额（必须大于 0）
+    /// 收款金额（必须大于 0；超精度拒绝）。
+    /// ★ 不挂 [Range]：DataAnnotations 失败会返回字段级 JSON（如 {"Amount":[...]}），
+    ///   绕过对外统一的 <c>API_AMOUNT_INVALID</c>。正数/精度校验在 <c>PayAllocateService</c>。
     /// </summary>
-    [Range(typeof(decimal), "0.01", "79228162514264337593543950335", ErrorMessage = "收款金额必须大于0")]
     public decimal Amount { get; set; }
 
     /// <summary>
-    /// 外部业务单号（可选，作为幂等键）
+    /// 商家订单号（必填，作为幂等键的一部分）
     /// </summary>
-    /// <remarks>
-    /// 传入后：同一 ExternalNo 重复请求将直接返回首次生成的订单，不再重新匹配（F2.6）。
-    /// </remarks>
-    [MaxLength(64, ErrorMessage = "外部业务单号长度不能超过64")]
+    [Required(ErrorMessage = "商家订单号不能为空")]
+    [MaxLength(64, ErrorMessage = "商家订单号长度不能超过64")]
     public string ExternalNo { get; set; }
 }
-
 /// <summary>
 /// 查询匹配输出（F2）
 /// </summary>

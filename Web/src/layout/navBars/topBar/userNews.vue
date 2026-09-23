@@ -60,7 +60,6 @@
 import { reactive } from 'vue';
 import router from '/@/router';
 import commonFunction from '/@/utils/commonFunction';
-import '@wangeditor/editor/dist/css/style.css';
 
 import { getAPI } from '/@/utils/axios-utils';
 import { SysNoticeApi } from '/@/api-services/system/api';
@@ -79,6 +78,8 @@ const goToNotice = () => {
 };
 // 查看消息详情
 const viewNoticeDetail = async (notice: any) => {
+	// 仅详情弹窗需要富文本样式，按需加载（不删 wangeditor，首屏不带）
+	await import('@wangeditor/editor/dist/css/style.css');
 	state.content = notice.content;
 	state.dialogVisible = true;
 

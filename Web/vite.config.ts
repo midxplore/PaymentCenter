@@ -9,7 +9,7 @@ import { CodeInspectorPlugin } from 'code-inspector-plugin';
 import fs from 'fs';
 import { visualizer } from 'rollup-plugin-visualizer';
 import { webUpdateNotice } from '@plugin-web-update-notification/vite';
-import vitePluginsAutoI18n, { EmptyTranslator, VolcengineTranslator, YoudaoTranslator, GoogleTranslator } from 'vite-auto-i18n-plugin';
+// vite-auto-i18n-plugin 已停用：启动不再挂载自动翻译（包保留，需要时再加回）
 
 const pathResolve = (dir: string) => {
 	return resolve(__dirname, '.', dir);
@@ -53,42 +53,6 @@ const viteConfig = defineConfig((mode: ConfigEnv) => {
 				// exclude: [/\.(br)$/, /\.(gz)$/], // 排除指定文件
 			}),
 			JSON.parse(env.VITE_OPEN_CDN) ? buildConfig.cdn() : null,
-			vitePluginsAutoI18n({
-				// 是否触发翻译
-				enabled: false,
-				// 源语言
-				originLang: 'zh-cn',
-				// 目标语言列表
-				targetLangList: ['en'], // 'zh-hk', 'zh-tw',
-				// 翻译文件配置生成路径
-				globalPath: './lang',
-				// 指定只翻译某些目录路径（白名单），默认为src
-				includePath: [/src\/views\//],
-				// 翻译调用函数名称，例如$t 表示翻译调用时的函数名
-				translateKey: '$tr',
-				// 是否清除已经不在上下文中的内容（清除项目中不再使用到的源语言键值对）
-				isClear: true,
-				// 翻译器
-				translator: new EmptyTranslator(),
-				// 火山引擎AI翻译器 https://www.volcengine.com/docs/82379/1330310
-				// translator: new VolcengineTranslator({
-				// 	apiKey: '',
-				// 	model: 'deepseek-r1-250528',
-				// }),
-				// translator: new YoudaoTranslator({
-				// 	appId: '',
-				// 	appKey: '',
-				// }),
-				// translator: new GoogleTranslator({
-				// 	proxyOption: {
-				// 		host: '127.0.0.1',
-				// 		port: 7890,
-				// 		headers: {
-				// 			'User-Agent': 'Node',
-				// 		},
-				// 	},
-				// }),
-			}),
 		],
 		root: process.cwd(),
 		resolve: { alias },

@@ -20,7 +20,7 @@
 							</el-select>
 						</el-form-item>
 					</el-col>
-					<el-col class="mb5" :xs="24" :sm="12" :md="8" :lg="6" :xl="6">
+					<el-col class="mb5" :xs="24" :sm="12" :md="8" :lg="6" :xl="6" v-if="auth('payAccount/page')">
 						<el-form-item label="收款账号" prop="accountId">
 							<el-select v-model="state.queryParams.accountId" placeholder="收款账号（账号维度审计）" filterable clearable style="width: 100%">
 								<el-option v-for="item in state.accountData" :key="item.id" :label="`${item.type}【${item.accountInfo || (item.qrImageUrl ? '收款码' : '-')}】`" :value="item.id" />
@@ -99,11 +99,15 @@
 					<el-tooltip content="详情" placement="top">
 						<el-button icon="ele-InfoFilled" size="small" text type="primary" @click="handleView(row)" v-auth="'payOrder/detail'" />
 					</el-tooltip>
+					<el-tooltip v-if="canConfirm(row)" content="确认到账" placement="top">
+						<el-button icon="ele-CircleCheck" size="small" text type="success" @click="handleConfirm(row)" v-auth="'payOrder/confirmReceived'" />
+					</el-tooltip>
 				</template>
 			</vxe-grid>
 		</el-card>
 
 		<OrderDetail ref="detailRef" />
+		<ConfirmReceived ref="confirmRef" @done="handleQuery(false)" />
 	</div>
 </template>
 
@@ -119,6 +123,7 @@ import { auth } from '/@/utils/authFunction';
 import { downloadByData, getFileName } from '/@/utils/download';
 
 import OrderDetail from '/@/views/paycenter/order/component/orderDetail.vue';
+import ConfirmReceived from '/@/views/paycenter/order/component/confirmReceived.vue';
 
 import { getAPI } from '/@/utils/axios-utils';
 import { PayOrderApi, PayExportApi, PayAccountApi } from '/@/api-services/system/api';
@@ -128,6 +133,7 @@ import { resolveExportRange, toExportInput } from '/@/views/paycenter/utils/expo
 const shortcuts = useDateTimeShortCust();
 const xGrid = ref<VxeGridInstance>();
 const detailRef = ref<InstanceType<typeof OrderDetail>>();
+const confirmRef = ref<InstanceType<typeof ConfirmReceived>>();
 const state = reactive({
 	queryParams: {
 		orderNo: undefined,
@@ -167,7 +173,7 @@ const options = useVxeTable<PayOrderOutput>(
 			{ field: 'completeTime', title: '完成时间', minWidth: 160, showOverflow: 'tooltip', formatter: ({ cellValue }) => fmtTime(cellValue) },
 			{ field: 'createTime', title: '创建时间', minWidth: 160, showOverflow: 'tooltip', formatter: ({ cellValue }) => fmtTime(cellValue) },
 			{ field: 'overpayRemark', title: '超额备注', minWidth: 140, showOverflow: 'tooltip' },
-			{ field: 'buttons', title: '操作', fixed: 'right', width: 80, showOverflow: true, slots: { default: 'row_buttons' } },
+			{ field: 'buttons', title: '操作', fixed: 'right', width: 120, showOverflow: true, slots: { default: 'row_buttons' } },
 		],
 	},
 	// vxeGrid配置参数(此处可覆写任何参数)，参考vxe-table官方文档
@@ -188,12 +194,22 @@ onMounted(async () => {
 	state.localPageParam = Local.get(localPageParamKey) || state.localPageParam;
 
 	// 状态下拉：直接取后端枚举，避免前端再抄一份中文
-	const statusRes = await getAPI(PayOrderApi).apiPayOrderStatusOptionsGet();
-	state.statusOptions = statusRes.data.result ?? [];
+	try {
+		const statusRes = await getAPI(PayOrderApi).apiPayOrderStatusOptionsGet();
+		state.statusOptions = statusRes.data.result ?? [];
+	} catch {
+		state.statusOptions = [];
+	}
 
-	// 账号下拉：用于「账号维度审计」过滤
-	const accountRes = await getAPI(PayAccountApi).apiPayAccountPagePost({ page: 1, pageSize: 1000 });
-	state.accountData = accountRes.data.result?.items ?? [];
+	// 账号下拉：仅有账号池权限时才拉（商户角色无 payAccount/*，强拉会 403）
+	if (auth('payAccount/page')) {
+		try {
+			const accountRes = await getAPI(PayAccountApi).apiPayAccountPagePost({ page: 1, pageSize: 1000 });
+			state.accountData = accountRes.data.result?.items ?? [];
+		} catch {
+			state.accountData = [];
+		}
+	}
 });
 
 // 查询api
@@ -241,6 +257,15 @@ const gridEvents: VxeGridListeners<PayOrderOutput> = {
 // 查看详情（F7.1 全生命周期）
 const handleView = async (row: any) => {
 	detailRef.value?.openDialog(row.id);
+};
+
+const canConfirm = (row: PayOrderOutput) => {
+	const s = Number(row.status);
+	return s === 1 || s === 2;
+};
+
+const handleConfirm = (row: PayOrderOutput) => {
+	confirmRef.value?.open(row);
 };
 
 // 导出订单（F7.5）

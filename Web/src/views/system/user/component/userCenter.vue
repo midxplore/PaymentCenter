@@ -140,15 +140,15 @@
 			</el-col>
 		</el-row>
 
-		<el-dialog v-model="state.signDialogVisible" draggable :close-on-click-modal="false" width="600px">
+		<el-dialog v-model="state.signDialogVisible" draggable :close-on-click-modal="false" width="600px" @opened="onSignDialogOpened">
 			<template #header>
 				<div style="color: #fff">
 					<el-icon size="16" style="margin-right: 3px; display: inline; vertical-align: middle"> <ele-EditPen /> </el-icon>
 					<span> {{ $t('message.list.electronicSignatureText') }} </span>
 				</div>
 			</template>
-			<div style="border: 1px dashed gray; width: 100%; height: 250px">
-				<VueSignaturePad ref="signaturePadRef" :options="state.signOptions" />
+			<div style="border: 1px dashed gray; width: 100%; height: 250px" v-loading="!signatureReady">
+				<VueSignaturePad v-if="signatureReady" ref="signaturePadRef" :options="state.signOptions" />
 			</div>
 			<div style="margin-top: 10px">
 				<div style="display: inline">{{ $t('message.list.brushThickness') }}：<el-input-number v-model="state.signOptions.minWidth" :min="0.5" :max="2.5" :step="0.1" size="small" /></div>
@@ -176,9 +176,9 @@ import { ElForm, ElMessage, ElMessageBox, genFileId } from 'element-plus';
 import type { UploadInstance, UploadProps, UploadRawFile } from 'element-plus';
 import { useUserInfo } from '/@/stores/userInfo';
 import { base64ToFile, blobToFile } from '/@/utils/base64Conver';
-import VueGridLayout from 'vue-grid-layout';
 import { sm2 } from 'sm-crypto-v2';
 import { useI18n } from 'vue-i18n';
+import { ensureVueSignaturePad } from '/@/utils/lazyFrameworkPlugins';
 
 import CropperDialog from '/@/components/cropper/index.vue';
 import OrgTree from '/@/views/system/user/component/orgTree.vue';
@@ -192,7 +192,8 @@ const stores = useUserInfo();
 const { userInfos } = storeToRefs(stores);
 const uploadSignRef = ref<UploadInstance>();
 //const uploadAvatarRef = ref<UploadInstance>();
-const signaturePadRef = ref<InstanceType<typeof VueGridLayout>>();
+const signaturePadRef = ref<any>();
+const signatureReady = ref(false);
 const ruleFormBaseRef = ref<InstanceType<typeof ElForm>>();
 const ruleFormPasswordRef = ref<InstanceType<typeof ElForm>>();
 const cropperDialogRef = ref<InstanceType<typeof CropperDialog>>();
@@ -217,13 +218,19 @@ const state = reactive({
 // 页面初始化
 onMounted(async () => {
 	state.loading = true;
-	var res = await getAPI(SysUserApi).apiSysUserBaseInfoGet();
-	state.ruleFormBase = res.data.result ?? { account: '' };
-	state.loading = false;
+	try {
+		var res = await getAPI(SysUserApi).apiSysUserBaseInfoGet();
+		state.ruleFormBase = res.data.result ?? { account: '' };
+	} catch {
+		state.ruleFormBase = { account: '' };
+	} finally {
+		state.loading = false;
+	}
 });
 
 // 签名监听
 watch(state.signOptions, () => {
+	if (!signaturePadRef.value?.signaturePad) return;
 	signaturePadRef.value.signaturePad.penColor = state.signOptions.penColor;
 	signaturePadRef.value.signaturePad.minWidth = state.signOptions.minWidth;
 });
@@ -236,8 +243,14 @@ const uploadCropperImg = async (e: any) => {
 };
 
 // 打开电子签名页面
-const openSignDialog = () => {
+const openSignDialog = async () => {
+	await ensureVueSignaturePad();
+	signatureReady.value = true;
 	state.signDialogVisible = true;
+};
+
+const onSignDialogOpened = () => {
+	signaturePadRef.value?.resizeCanvas?.();
 };
 
 // 保存并上传电子签名

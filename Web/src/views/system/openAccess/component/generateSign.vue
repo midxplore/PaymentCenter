@@ -52,6 +52,18 @@
 						</el-form-item>
 					</el-col>
 					<el-col :xs="24" :sm="24" :md="24" :lg="24" :xl="24" class="mb20">
+						<el-form-item label="请求正文" prop="body">
+							<el-input
+								v-model="state.ruleForm.body"
+								type="textarea"
+								:rows="4"
+								placeholder="与线上实际发送的 JSON 完全一致；GET 等无正文请留空"
+								clearable
+							/>
+							<div class="scope-tip">参与签名的是正文原始字节的 SHA-256（小写 hex）。留空 = 空体哈希。</div>
+						</el-form-item>
+					</el-col>
+					<el-col :xs="24" :sm="24" :md="24" :lg="24" :xl="24" class="mb20">
 						<el-form-item label="随机数" prop="nonce">
 							<el-input v-model="state.ruleForm.nonce" placeholder="输入或获取随机数" clearable>
 								<template #append>
@@ -89,7 +101,7 @@ const state = reactive({
 	sign: '', // 生成的签名
 });
 
-watch([() => state.ruleForm.method, () => state.ruleForm.accessSecret, () => state.ruleForm.url, () => state.ruleForm.timestamp, () => state.ruleForm.nonce], () => {
+watch([() => state.ruleForm.method, () => state.ruleForm.accessSecret, () => state.ruleForm.url, () => state.ruleForm.timestamp, () => state.ruleForm.nonce, () => state.ruleForm.body], () => {
 	if (
 		state.ruleForm.method == undefined ||
 		state.ruleForm.method == null ||
@@ -118,6 +130,7 @@ const openDialog = (row: any) => {
 		url: '',
 		timestamp: undefined!,
 		nonce: '',
+		body: '',
 	};
 	state.isShowDialog = true;
 	ruleFormRef.value?.resetFields();

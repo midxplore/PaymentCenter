@@ -1,9 +1,9 @@
 {
 	"name": "paymentcenter-web",
 	"type": "module",
-	"version": "1.0.0",
-	"lastBuildTime": "2026.09.19",
-	"description": "支付中心 · 收款账号分配系统",
+	"version": "1.1.0",
+	"lastBuildTime": "2026.09.22",
+	"description": "马上付 · 收款账号分配系统",
 	"author": "PaymentCenter",
 	"license": "MIT",
 	"scripts": {

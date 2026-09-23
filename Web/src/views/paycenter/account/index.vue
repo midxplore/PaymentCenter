@@ -66,7 +66,7 @@
 					<el-tooltip content="追加额度" placement="top">
 						<el-button icon="ele-Coin" size="small" text type="warning" @click="handleAddQuota(row)" v-auth="'payAccount/addQuota'" />
 					</el-tooltip>
-					<el-tooltip :content="row.status === 1 ? '停用' : '启用'" placement="top">
+					<el-tooltip :content="statusActionLabel(row.status)" placement="top">
 						<el-button
 							:icon="row.status === 1 ? 'ele-VideoPause' : 'ele-VideoPlay'"
 							size="small"
@@ -123,11 +123,12 @@ const state = reactive({
 	typeLabelMap: {} as Record<string, string>,
 });
 
-// 状态选项（值取自后端 PayAccountStatusEnum：1启用 2停用 3已用完）
+// 状态选项（值取自后端 PayAccountStatusEnum：1启用 2停用 3已用完 4占用中）
 const statusOptions = [
 	{ label: '启用', value: 1 },
 	{ label: '停用', value: 2 },
 	{ label: '已用完', value: 3 },
+	{ label: '占用中', value: 4 },
 ];
 
 // 本地存储参数
@@ -233,10 +234,16 @@ const handleAddQuota = (row: any) => {
 	quotaRef.value?.openDialog(row);
 };
 
-// 启用/停用
+// 启用/停用/释放占用：启用(1)→停用；停用(2)/占用中(4)→启用；已用完(3)不可点
+const statusActionLabel = (status: any) => {
+	const s = Number(status);
+	if (s === 1) return '停用';
+	if (s === 4) return '释放（启用）';
+	return '启用';
+};
 const handleSetStatus = (row: any) => {
 	const target = row.status === 1 ? 2 : 1;
-	const label = target === 1 ? '启用' : '停用';
+	const label = statusActionLabel(row.status);
 	ElMessageBox.confirm(`确定${label}收款账号：【${accountLabel(row)}】?`, '提示', {
 		confirmButtonText: '确定',
 		cancelButtonText: '取消',
@@ -275,7 +282,7 @@ const fmtTime = (value: any) => {
 	const p = (n: number) => String(n).padStart(2, '0');
 	return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 };
-// 状态色（1启用 2停用 3已用完）
+// 状态色（1启用 2停用 3已用完 4占用中）
 const statusTagType = (status: any) => {
 	switch (Number(status)) {
 		case 1:
@@ -284,6 +291,8 @@ const statusTagType = (status: any) => {
 			return 'info';
 		case 3:
 			return 'danger';
+		case 4:
+			return 'warning';
 		default:
 			return 'info';
 	}

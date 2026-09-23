@@ -56,8 +56,11 @@ public class SysOpenAccessService : IDynamicApiController, ITransient
         // 密钥
         var appSecretByte = Encoding.UTF8.GetBytes(input.AccessSecret);
 
-        // 拼接参数
-        var parameter = $"{input.Method.ToString().ToUpper()}&{input.Url}&{input.AccessKey}&{input.Timestamp}&{input.Nonce}";
+        // BODY_SHA256_HEX：优先用正文原文算；否则用调用方已算好的 hex；都空则按空体
+        var bodySha256Hex = ResolveBodySha256Hex(input);
+
+        // 拼接参数（与 SignatureAuthenticationHandler.GetMessageForSignAsync 一致）
+        var parameter = $"{input.Method.ToString().ToUpper()}&{input.Url}&{input.AccessKey}&{input.Timestamp}&{input.Nonce}&{bodySha256Hex}";
         // 使用 HMAC-SHA256 协议创建基于哈希的消息身份验证代码 (HMAC)，以appSecretByte 作为密钥，对上面拼接的参数进行计算签名，所得签名进行 Base-64 编码
         using HMAC hmac = new HMACSHA256();
         hmac.Key = appSecretByte;
@@ -67,6 +70,28 @@ public class SysOpenAccessService : IDynamicApiController, ITransient
             Timestamp = input.Timestamp,
             Signature = sign
         };
+    }
+
+    /// <summary>
+    /// 解析待签名的正文哈希（小写 hex）
+    /// </summary>
+    private static string ResolveBodySha256Hex(GenerateSignatureInput input)
+    {
+        if (!string.IsNullOrEmpty(input.Body))
+        {
+            var hash = SHA256.HashData(Encoding.UTF8.GetBytes(input.Body));
+            return Convert.ToHexString(hash).ToLowerInvariant();
+        }
+
+        if (!string.IsNullOrWhiteSpace(input.BodySha256Hex))
+        {
+            var hex = input.BodySha256Hex.Trim().ToLowerInvariant();
+            if (hex.Length != 64 || hex.Any(c => c is (< '0' or > '9') and (< 'a' or > 'f')))
+                throw Oops.Bah("BodySha256Hex 必须是 64 位小写十六进制（SHA-256）");
+            return hex;
+        }
+
+        return Convert.ToHexString(SHA256.HashData(ReadOnlySpan<byte>.Empty)).ToLowerInvariant();
     }
 
     /// <summary>

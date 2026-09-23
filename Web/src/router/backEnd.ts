@@ -5,7 +5,7 @@ import { useRequestOldRoutes } from '/@/stores/requestOldRoutes';
 import { Session } from '/@/utils/storage';
 import { NextLoading } from '/@/utils/loading';
 import { dynamicRoutes, notFoundAndNoPower } from '/@/router/route';
-import { formatTwoStageRoutes, formatFlatteningRoutes, router } from '/@/router/index';
+import { formatTwoStageRoutes, formatFlatteningRoutes, copyRouteTree, router } from '/@/router/index';
 import { useRoutesList } from '/@/stores/routesList';
 import { useTagsViewRoutes } from '/@/stores/tagsViewRoutes';
 
@@ -51,6 +51,13 @@ export async function initBackEndControlRoutes() {
 	useRequestOldRoutes().setRequestOldRoutes(res as string[]);
 	// 处理路由（component），替换 dynamicRoutes（/@/router/route）第一个顶级 children 的路由
 	dynamicRoutes[0].children = await backEndComponent(res);
+	// 登录落地：有工作台则保持 /dashboard/home；否则落到首个可见菜单（商户角色无工作台时避免 404）
+	const firstPath = findFirstMenuPath(dynamicRoutes[0].children as any[]);
+	if (firstPath) {
+		const preferHome = '/dashboard/home';
+		const hasHome = routePathExists(dynamicRoutes[0].children as any[], preferHome);
+		dynamicRoutes[0].redirect = hasHome ? preferHome : firstPath;
+	}
 	// 添加动态路由
 	await setAddRoute();
 	// 设置路由到 pinia routesList 中（已处理成多级嵌套路由）及缓存多级嵌套数组处理后的一维数组
@@ -74,7 +81,7 @@ export async function setFilterMenuAndCacheTagsViewRoutes() {
  */
 export function setCacheTagsViewRoutes() {
 	const storesTagsView = useTagsViewRoutes(pinia);
-	storesTagsView.setTagsViewRoutes(formatTwoStageRoutes(formatFlatteningRoutes(dynamicRoutes))[0].children);
+	storesTagsView.setTagsViewRoutes(formatTwoStageRoutes(formatFlatteningRoutes(copyRouteTree(dynamicRoutes)))[0].children);
 }
 
 /**
@@ -83,7 +90,8 @@ export function setCacheTagsViewRoutes() {
  * @returns 返回替换后的路由数组
  */
 export function setFilterRouteEnd() {
-	let filterRouteEnd: any = formatTwoStageRoutes(formatFlatteningRoutes(dynamicRoutes));
+	// ★ 必须 copyRouteTree：flatten 会删 children，不能改坏侧栏用的 dynamicRoutes 菜单树
+	let filterRouteEnd: any = formatTwoStageRoutes(formatFlatteningRoutes(copyRouteTree(dynamicRoutes)));
 	// notFoundAndNoPower 防止 404、401 不在 layout 布局中，不设置的话，404、401 界面将全屏显示
 	// 关联问题 No match found for location with path 'xxx'
 	filterRouteEnd[0].children = [...filterRouteEnd[0].children, ...notFoundAndNoPower];
@@ -154,7 +162,13 @@ export function backEndComponent(routes: any) {
 	if (!routes) return;
 	return routes.map((item: any) => {
 		if (!item.path) item.path = ''; // 防止后端返回的路由没有path属性，导致路由报错
-		if (item.component) item.component = dynamicImport(dynamicViewsModules, item.component as string);
+		// Layout 目录：dynamicImport 命中 0 → undefined。真正页面扁平挂在 `/` 下，
+		// 由 layout/main 内的 parent.vue 渲染；不要再映射成嵌套 parent（会双 keep-alive 空白）。
+		if (item.component && item.component !== 'Layout' && item.component !== 'layout') {
+			item.component = dynamicImport(dynamicViewsModules, item.component as string);
+		} else if (item.component === 'Layout' || item.component === 'layout') {
+			item.component = undefined;
+		}
 		item.children && backEndComponent(item.children);
 		return item;
 	});
@@ -179,4 +193,26 @@ export function dynamicImport(dynamicViewsModules: Record<string, Function>, com
 	if (matchKeys?.length > 1) {
 		return false;
 	}
+}
+
+/** 深度优先找第一个带 path 的叶子菜单（用于无工作台时的登录落地） */
+function findFirstMenuPath(routes: any[] | undefined): string | undefined {
+	if (!routes?.length) return undefined;
+	for (const r of routes) {
+		if (r?.children?.length) {
+			const child = findFirstMenuPath(r.children);
+			if (child) return child;
+		}
+		if (r?.path) return r.path as string;
+	}
+	return undefined;
+}
+
+function routePathExists(routes: any[] | undefined, path: string): boolean {
+	if (!routes?.length) return false;
+	for (const r of routes) {
+		if (r?.path === path) return true;
+		if (routePathExists(r?.children, path)) return true;
+	}
+	return false;
 }

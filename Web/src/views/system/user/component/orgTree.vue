@@ -1,9 +1,9 @@
 <template>
-	<div v-loading="state.loading">
+	<div v-loading="state.loading || !pluginReady">
 		<div style="text-align: right">
 			<div style="margin-right: 10px"><el-switch v-model="state.horizontal"></el-switch> {{ $t('message.list.layout') }}</div>
 		</div>
-		<div style="height: 500px">
+		<div style="height: 500px" v-if="pluginReady">
 			<vue3-tree-org
 				:data="state.orgData"
 				:props="{ id: 'id', pid: 'pid', label: 'name', expand: 'expand', children: 'children' }"
@@ -31,15 +31,17 @@
 </template>
 
 <script lang="ts" setup name="orgTree">
-import { onMounted, reactive } from 'vue';
+import { onBeforeMount, onMounted, reactive, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useUserInfo } from '/@/stores/userInfo';
+import { ensureVue3TreeOrg } from '/@/utils/lazyFrameworkPlugins';
 
 import { getAPI } from '/@/utils/axios-utils';
 import { SysOrgApi } from '/@/api-services/system/api';
 
 const stores = useUserInfo();
 const { userInfos } = storeToRefs(stores);
+const pluginReady = ref(false);
 const currentNodeStyle = { color: '#FFFFFF', background: '#3B3B3B' };
 const state = reactive({
 	loading: false,
@@ -58,9 +60,16 @@ const props = defineProps({
 	isAllOrg: Boolean,
 });
 
+onBeforeMount(async () => {
+	await ensureVue3TreeOrg();
+	pluginReady.value = true;
+});
+
 // 页面初始化
 onMounted(async () => {
 	state.loading = true;
+	await ensureVue3TreeOrg();
+	pluginReady.value = true;
 	// ★ 方法名是 ChildTree**Pid**Level，不是 ChildTreeIdLevel。
 	//   后端签名 SysOrgService.GetChildTree(long pid, int level)，生成物里只有
 	//   apiSysOrgChildTreePidLevelGet；原写法调用的是**不存在的方法**，

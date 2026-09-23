@@ -4,6 +4,8 @@
 //
 // 不得利用本项目从事危害国家安全、扰乱社会秩序、侵犯他人合法权益等法律法规禁止的活动！任何基于本项目二次开发而产生的一切法律纠纷和责任，我们不承担任何责任！
 
+using Microsoft.AspNetCore.Http;
+
 namespace Admin.NET.Application;
 
 /// <summary>
@@ -12,53 +14,69 @@ namespace Admin.NET.Application;
 /// <remarks>
 /// <para>
 /// <b>与 <see cref="PayAllocateService"/> 的边界</b>：本服务是<b>后台运营视角</b>，挂 JWT + RBAC；
-/// 对外 3 个接口（`/api/pay/*`）挂签名鉴权，在 <see cref="PayAllocateService"/> / <see cref="PayNotifyService"/>。
-/// 两者从代码结构上分离，杜绝「后台接口被开放身份越权调用」（F6.2）。
+/// 对外接口（`/api/pay/*`）挂签名鉴权，在 <see cref="PayAllocateService"/>。
 /// </para>
 /// <para>
-/// <b>只读</b>：本服务不提供任何修改订单的入口。订单状态只能由业务链路推进
-/// （到账通知 / 过期任务 / 人工关联），这是 F7.4「流水不可篡改」的组成部分——
-/// 后台能查、能导出，但不能手改订单状态与金额。
+/// 平台运营可通过 <see cref="ConfirmReceived"/> 确认到账（须水单）；商户角色按绑定 OpenAccess 隔离订单。
 /// </para>
 /// </remarks>
 [ApiDescriptionSettings(Order = 408, Description = "收款订单")]
 public class PayOrderService : IDynamicApiController, ITransient
 {
+    private const string VoucherAllowSuffix = ".jpg.jpeg.png.bmp.webp.pdf";
+
     private readonly SqlSugarRepository<PayOrder> _payOrderRep;
     private readonly SqlSugarRepository<PayOrderEvent> _payOrderEventRep;
     private readonly SqlSugarRepository<PayNotifyRecord> _payNotifyRecordRep;
     private readonly SqlSugarRepository<PayAccount> _payAccountRep;
+    private readonly SqlSugarRepository<SysOpenAccess> _openAccessRep;
+    private readonly PayNotifyService _payNotifyService;
+    private readonly PayWebhookService _payWebhookService;
+    private readonly PayAuditService _payAuditService;
+    private readonly SysFileService _sysFileService;
+    private readonly UserManager _userManager;
+    private readonly ISqlSugarClient _db;
 
     public PayOrderService(SqlSugarRepository<PayOrder> payOrderRep,
         SqlSugarRepository<PayOrderEvent> payOrderEventRep,
         SqlSugarRepository<PayNotifyRecord> payNotifyRecordRep,
-        SqlSugarRepository<PayAccount> payAccountRep)
+        SqlSugarRepository<PayAccount> payAccountRep,
+        SqlSugarRepository<SysOpenAccess> openAccessRep,
+        PayNotifyService payNotifyService,
+        PayWebhookService payWebhookService,
+        PayAuditService payAuditService,
+        SysFileService sysFileService,
+        UserManager userManager,
+        ISqlSugarClient db)
     {
         _payOrderRep = payOrderRep;
         _payOrderEventRep = payOrderEventRep;
         _payNotifyRecordRep = payNotifyRecordRep;
         _payAccountRep = payAccountRep;
+        _openAccessRep = openAccessRep;
+        _payNotifyService = payNotifyService;
+        _payWebhookService = payWebhookService;
+        _payAuditService = payAuditService;
+        _sysFileService = sysFileService;
+        _userManager = userManager;
+        _db = db;
     }
 
     /// <summary>
     /// 获取收款订单分页列表（F7.2）
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// 传 <c>accountId</c> 即为「账号维度审计」：该账号名下的订单明细（含每笔的金额与状态）。
-    /// 账号信息（账号内容 / 类型）通过一次批量查询补齐，避免逐行查库。
-    /// </para>
-    /// <para>
-    /// <b>不要加 <c>[FromQuery]</c></b>：框架的分页查询约定是复杂入参走 POST body
-    /// （参见 <c>SysOpenAccessService.Page</c> / <c>SysLogOpService.Page</c>）。
-    /// 加了 <c>[FromQuery]</c> 会让 swagger 把输入对象摊平成十几个位置参数，
-    /// 前端每次调用都要按顺序传一长串 <c>undefined</c>，且新增查询条件就会改变调用签名。
-    /// </para>
-    /// </remarks>
     [DisplayName("获取收款订单分页列表")]
     public async Task<SqlSugarPagedList<PayOrderOutput>> Page(PagePayOrderInput input)
     {
+        var clientIds = await ResolveVisibleClientIdsAsync();
+        if (clientIds is { Count: 0 })
+            return EmptyPage<PayOrderOutput>(input.Page, input.PageSize);
+
+        if (clientIds != null && input.ClientId.HasValue && !clientIds.Contains(input.ClientId.Value))
+            return EmptyPage<PayOrderOutput>(input.Page, input.PageSize);
+
         var paged = await _payOrderRep.AsQueryable()
+            .WhereIF(clientIds != null, u => u.ClientId != null && clientIds.Contains(u.ClientId.Value))
             .WhereIF(!string.IsNullOrWhiteSpace(input.OrderNo), u => u.OrderNo.Contains(input.OrderNo))
             .WhereIF(!string.IsNullOrWhiteSpace(input.ExternalNo), u => u.ExternalNo.Contains(input.ExternalNo))
             .WhereIF(input.Status.HasValue, u => u.Status == input.Status.Value)
@@ -69,7 +87,6 @@ public class PayOrderService : IDynamicApiController, ITransient
             .OrderBy(u => u.CreateTime, OrderByType.Desc)
             .ToPagedListAsync(input.Page, input.PageSize);
 
-        // 补齐账号信息（一次查询覆盖本页所有账号，不做 N+1）
         var accountIds = paged.Items.Select(u => u.AccountId).Where(u => u > 0).Distinct().ToList();
         var accountMap = accountIds.Count == 0
             ? new Dictionary<long, PayAccount>()
@@ -91,13 +108,11 @@ public class PayOrderService : IDynamicApiController, ITransient
     /// <summary>
     /// 获取收款订单详情（F7.1 全生命周期）
     /// </summary>
-    /// <remarks>
-    /// 一次给全三张表：订单当前状态 + 事件流水（谁在什么时候把它推到了哪个状态）+ 每次到账明细。
-    /// </remarks>
     [DisplayName("获取收款订单详情")]
     public async Task<PayOrderDetailOutput> Detail([FromQuery] BaseIdInput input)
     {
         var order = await _payOrderRep.GetByIdAsync(input.Id) ?? throw Oops.Oh(ErrorCodeEnum.API_ORDER_NOT_FOUND);
+        await EnsureOrderVisibleAsync(order);
 
         var account = order.AccountId > 0
             ? await _payAccountRep.AsQueryable().Where(u => u.Id == order.AccountId).FirstAsync()
@@ -122,9 +137,8 @@ public class PayOrderService : IDynamicApiController, ITransient
     }
 
     /// <summary>
-    /// 按订单号获取详情（便于排查：三方只给了订单号）
+    /// 按订单号获取详情
     /// </summary>
-    /// <param name="orderNo">系统订单号（精确匹配）</param>
     [DisplayName("按订单号获取收款订单详情")]
     public async Task<PayOrderDetailOutput> DetailByNo([FromQuery] string orderNo)
     {
@@ -135,6 +149,92 @@ public class PayOrderService : IDynamicApiController, ITransient
             .FirstAsync() ?? throw Oops.Oh(ErrorCodeEnum.API_ORDER_NOT_FOUND);
 
         return await Detail(new BaseIdInput { Id = order.Id });
+    }
+
+    /// <summary>
+    /// 上传确认到账水单，返回根相对路径
+    /// </summary>
+    [ApiDescriptionSettings(Name = "UploadVoucher"), HttpPost]
+    [DisplayName("上传到账水单")]
+    public async Task<string> UploadVoucher([Required] IFormFile file)
+    {
+        var sysFile = await _sysFileService.UploadFile(
+            new UploadFileInput { File = file, AllowSuffix = VoucherAllowSuffix },
+            "upload/pay-voucher");
+        var url = sysFile.Url?.Trim() ?? "";
+        if (string.IsNullOrWhiteSpace(url)) throw Oops.Bah("水单上传失败");
+        return url.StartsWith('/') ? url : "/" + url.TrimStart('/');
+    }
+
+    /// <summary>
+    /// 平台确认到账（须水单；按请求金额差额一次结清为 Completed）
+    /// </summary>
+    [ApiDescriptionSettings(Name = "ConfirmReceived"), HttpPost]
+    [DisplayName("确认到账")]
+    public async Task ConfirmReceived(ConfirmReceivedInput input)
+    {
+        if (input == null || input.Id <= 0) throw Oops.Bah("订单不能为空");
+        if (string.IsNullOrWhiteSpace(input.VoucherUrl)) throw Oops.Bah("水单不能为空");
+
+        var voucherUrl = input.VoucherUrl.Trim();
+        if (voucherUrl.Length > PayConst.VoucherUrlLength)
+            throw Oops.Bah($"水单路径长度不能超过 {PayConst.VoucherUrlLength}");
+
+        var tenant = _db.AsTenant();
+        tenant.BeginTran();
+        try
+        {
+            var order = await _payOrderRep.GetByIdAsync(input.Id)
+                ?? throw Oops.Oh(ErrorCodeEnum.API_ORDER_NOT_FOUND);
+
+            if (order.Status != PayOrderStatusEnum.Pending && order.Status != PayOrderStatusEnum.Partial)
+                throw Oops.Oh(ErrorCodeEnum.API_ORDER_STATUS_INVALID, order.Status.GetDescription());
+
+            var gap = order.RequestAmount - order.ReceivedAmount;
+            if (gap <= 0)
+                throw Oops.Bah("订单已足额到账，无需再确认");
+
+            var applied = await _payNotifyService.ApplyReceiptCoreAsync(order, gap);
+            if (applied == null)
+                throw Oops.Oh(ErrorCodeEnum.API_ORDER_STATUS_INVALID, "已被并发终结");
+            if (applied.Status != PayOrderStatusEnum.Completed)
+                throw Oops.Bah("确认到账后订单未进入完成态，请重试");
+
+            var now = DateTime.Now;
+            await _payOrderRep.AsUpdateable()
+                .SetColumns(u => new PayOrder
+                {
+                    VoucherUrl = voucherUrl,
+                    UpdateTime = now
+                })
+                .Where(u => u.Id == order.Id)
+                .ExecuteCommandAsync();
+
+            await _payAccountRep.AsUpdateable()
+                .SetColumns(u => new PayAccount
+                {
+                    LastSuccessTime = now,
+                    UpdateTime = now
+                })
+                .Where(u => u.Id == order.AccountId)
+                .ExecuteCommandAsync();
+
+            var fresh = await _payOrderRep.GetByIdAsync(order.Id);
+            var remarkExtra = string.IsNullOrWhiteSpace(input.Remark) ? "" : $"；备注 {input.Remark.Trim()}";
+            await _payAuditService.WriteAsync(PayAuditActionEnum.ConfirmReceived,
+                PayConst.AuditTargetTypeOrder, fresh.Id, fresh.OrderNo,
+                remark: $"确认到账 {gap:0.00}，水单 {voucherUrl}{remarkExtra}",
+                db: _db);
+
+            await _payWebhookService.EnqueueOrderResultAsync(fresh);
+
+            tenant.CommitTran();
+        }
+        catch
+        {
+            tenant.RollbackTran();
+            throw;
+        }
     }
 
     /// <summary>
@@ -149,12 +249,39 @@ public class PayOrderService : IDynamicApiController, ITransient
     }
 
     /// <summary>
-    /// 订单实体 → 列表输出
+    /// 超管看全量（null）；绑定了 OpenAccess 的用户只看这些 ClientId；未绑定凭证的平台用户看全量。
     /// </summary>
-    /// <remarks>
-    /// 单处实现，保证 <see cref="Page"/> 与 <see cref="Detail"/> 的字段口径完全一致
-    /// （两处各写一遍必然随时间漂移）。
-    /// </remarks>
+    private async Task<List<long>> ResolveVisibleClientIdsAsync()
+    {
+        if (_userManager.SuperAdmin) return null;
+
+        var ids = await _openAccessRep.AsQueryable()
+            .Where(u => u.BindUserId == _userManager.UserId)
+            .Select(u => u.Id)
+            .ToListAsync();
+
+        return ids.Count == 0 ? null : ids;
+    }
+
+    private async Task EnsureOrderVisibleAsync(PayOrder order)
+    {
+        var clientIds = await ResolveVisibleClientIdsAsync();
+        if (clientIds == null) return;
+        if (order.ClientId == null || !clientIds.Contains(order.ClientId.Value))
+            throw Oops.Oh(ErrorCodeEnum.API_ORDER_NOT_FOUND);
+    }
+
+    private static SqlSugarPagedList<T> EmptyPage<T>(int page, int pageSize) => new()
+    {
+        Page = page,
+        PageSize = pageSize,
+        Total = 0,
+        TotalPages = 0,
+        HasNextPage = false,
+        HasPrevPage = false,
+        Items = []
+    };
+
     private static PayOrderOutput ToOutput(PayOrder order, PayAccount account)
     {
         var output = new PayOrderOutput
@@ -173,18 +300,15 @@ public class PayOrderService : IDynamicApiController, ITransient
             ExpireTime = order.ExpireTime,
             CompleteTime = order.CompleteTime,
             OverpayRemark = order.OverpayRemark,
+            VoucherUrl = order.VoucherUrl,
             CreateTime = order.CreateTime
         };
         FillComputed(output);
         return output;
     }
 
-    /// <summary>
-    /// 填充计算字段（不落库、由其他列推导）
-    /// </summary>
     private static void FillComputed(PayOrderOutput output)
     {
-        // 未达成金额可能是负数（超额到账），如实呈现、不截断为 0——否则对账时看不出多收
         output.OutstandingAmount = output.RequestAmount - output.ReceivedAmount;
         output.StatusText = output.Status.GetDescription();
     }
@@ -224,13 +348,6 @@ public class PayOrderService : IDynamicApiController, ITransient
 /// </summary>
 public class PayEnumOption
 {
-    /// <summary>
-    /// 显示文本
-    /// </summary>
     public string Label { get; set; }
-
-    /// <summary>
-    /// 枚举值
-    /// </summary>
     public int Value { get; set; }
 }

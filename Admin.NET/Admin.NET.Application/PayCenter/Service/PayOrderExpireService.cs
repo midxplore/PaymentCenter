@@ -30,6 +30,7 @@ public class PayOrderExpireService : IDynamicApiController, ITransient
     private readonly SqlSugarRepository<PayOrderEvent> _payOrderEventRep;
     private readonly SqlSugarRepository<PayAccount> _payAccountRep;
     private readonly PayAccountService _payAccountService;
+    private readonly PayWebhookService _payWebhookService;
     private readonly ISqlSugarClient _db;
     private readonly ILogger<PayOrderExpireService> _logger;
 
@@ -37,6 +38,7 @@ public class PayOrderExpireService : IDynamicApiController, ITransient
         SqlSugarRepository<PayOrderEvent> payOrderEventRep,
         SqlSugarRepository<PayAccount> payAccountRep,
         PayAccountService payAccountService,
+        PayWebhookService payWebhookService,
         ISqlSugarClient db,
         ILogger<PayOrderExpireService> logger)
     {
@@ -44,6 +46,7 @@ public class PayOrderExpireService : IDynamicApiController, ITransient
         _payOrderEventRep = payOrderEventRep;
         _payAccountRep = payAccountRep;
         _payAccountService = payAccountService;
+        _payWebhookService = payWebhookService;
         _db = db;
         _logger = logger;
     }
@@ -163,7 +166,8 @@ public class PayOrderExpireService : IDynamicApiController, ITransient
                 .Where(u => u.Id == order.AccountId && u.LockedQuota >= order.RequestAmount)
                 .ExecuteCommandAsync(cancellationToken);
 
-            // 释放预占后账号可能从「已用完」恢复为「启用」，重新参与匹配（F1.4）
+            // 释放预占后：额度结转完成。账号若处于「占用中」保持不动，须管理员启用才再匹配。
+            // SyncStatusByQuota 只处理 Enabled⇄Exhausted，不会误把 InUse 刷回启用。
             await _payAccountService.SyncStatusByQuotaAsync(order.AccountId);
 
             // ── 步骤 4：事件流水（只增不改，F7.1）────────────────────────────
@@ -176,14 +180,28 @@ public class PayOrderExpireService : IDynamicApiController, ITransient
                 ToStatus = PayOrderStatusEnum.Expired,
                 Amount = order.ReceivedAmount,
                 ReceivedTotal = order.ReceivedAmount,
-                // 分支依据是「有没有收到过到账」，而不是「释放额是否为正」：
-                // 未到账时 released 恰好等于请求金额（也是正数），用 released 判会走错分支
                 Remark = order.ReceivedAmount > 0m
                     ? $"订单过期，已到账 {order.ReceivedAmount:0.00} 转已用，释放未达成部分 {released:0.00}"
                     : $"订单过期，未收到到账，释放全部预占 {order.RequestAmount:0.00}",
                 OperatorId = null,
                 OperatorName = "系统"
             });
+
+            // 空过期降级：从未到账的过期，账号 EmptyExpireCount +1
+            if (order.ReceivedAmount == 0m)
+            {
+                await _payAccountRep.AsUpdateable()
+                    .SetColumns(u => new PayAccount
+                    {
+                        EmptyExpireCount = u.EmptyExpireCount + 1,
+                        UpdateTime = now
+                    })
+                    .Where(u => u.Id == order.AccountId)
+                    .ExecuteCommandAsync(cancellationToken);
+            }
+
+            // 终态 Webhook（无 URL 则跳过）
+            await _payWebhookService.EnqueueOrderResultAsync(order);
 
             tenant.CommitTran();
             return true;

@@ -384,4 +384,50 @@ export class PayOrderApi extends BaseAPI {
     public async apiPayOrderStatusOptionsGet(options?: AxiosRequestConfig) : Promise<AxiosResponse<AdminNETResultListPayEnumOption>> {
         return PayOrderApiFp(this.configuration).apiPayOrderStatusOptionsGet(options).then((request) => request(this.axios, this.basePath));
     }
+
+    /**
+     * 平台确认到账（须水单）
+     * @memberof PayOrderApi
+     */
+    public async apiPayOrderConfirmReceivedPost(body: { id: number; voucherUrl: string; remark?: string | null }, options?: AxiosRequestConfig): Promise<AxiosResponse<any>> {
+        const localVarPath = `/api/payOrder/confirmReceived`;
+        const headers: any = { 'Content-Type': 'application/json-patch+json' };
+        if (this.configuration?.accessToken) {
+            const accessToken = typeof this.configuration.accessToken === 'function'
+                ? await this.configuration.accessToken()
+                : await this.configuration.accessToken;
+            headers['Authorization'] = 'Bearer ' + accessToken;
+        }
+        return this.axios.request({
+            url: (this.basePath || '') + localVarPath,
+            method: 'POST',
+            headers: { ...headers, ...(options?.headers || {}) },
+            data: body,
+            ...options,
+        });
+    }
+
+    /**
+     * 上传到账水单
+     * @memberof PayOrderApi
+     */
+    public async apiPayOrderUploadVoucherPostForm(file?: Blob, options?: AxiosRequestConfig): Promise<AxiosResponse<{ result?: string }>> {
+        const localVarPath = `/api/payOrder/uploadVoucher`;
+        const localVarFormParams = new FormData();
+        if (file !== undefined) localVarFormParams.append('file', file as any);
+        const headers: any = { 'Content-Type': 'multipart/form-data' };
+        if (this.configuration?.accessToken) {
+            const accessToken = typeof this.configuration.accessToken === 'function'
+                ? await this.configuration.accessToken()
+                : await this.configuration.accessToken;
+            headers['Authorization'] = 'Bearer ' + accessToken;
+        }
+        return this.axios.request({
+            url: (this.basePath || '') + localVarPath,
+            method: 'POST',
+            headers: { ...headers, ...(options?.headers || {}) },
+            data: localVarFormParams,
+            ...options,
+        });
+    }
 }

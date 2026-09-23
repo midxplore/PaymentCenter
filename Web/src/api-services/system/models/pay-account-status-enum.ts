@@ -13,13 +13,14 @@
  */
 
 /**
- * 收款账号状态枚举（F1.3 / F1.4）<br />&nbsp;启用 Enabled = 1<br />&nbsp;停用 Disabled = 2<br />&nbsp;已用完 Exhausted = 3<br />
+ * 收款账号状态枚举（F1.3 / F1.4）<br />&nbsp;启用 Enabled = 1<br />&nbsp;停用 Disabled = 2<br />&nbsp;已用完 Exhausted = 3<br />&nbsp;占用中 InUse = 4<br />
  * @export
  * @enum {string}
  */
 export enum PayAccountStatusEnum {
     NUMBER_1 = 1,
     NUMBER_2 = 2,
-    NUMBER_3 = 3
+    NUMBER_3 = 3,
+    NUMBER_4 = 4
 }
 

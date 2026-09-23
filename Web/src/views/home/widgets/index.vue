@@ -173,9 +173,13 @@ onMounted(async () => {
 		grid.value = savedGrid;
 	}
 
-	// 获取最新的通知公告标题
-	var res = await getAPI(SysNoticeApi).apiSysNoticeNoticeTitleGet();
-	noticeTitle.value = res.data.result?.title ?? ''; // i18n.t(res.data.result?.title ?? '');
+	// 获取最新的通知公告标题（无权限时忽略）
+	try {
+		var res = await getAPI(SysNoticeApi).apiSysNoticeNoticeTitleGet();
+		noticeTitle.value = res.data.result?.title ?? '';
+	} catch {
+		noticeTitle.value = '';
+	}
 });
 
 const availableCompsList = computed(() => {

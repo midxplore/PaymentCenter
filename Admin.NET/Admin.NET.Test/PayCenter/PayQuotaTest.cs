@@ -1,4 +1,4 @@
-﻿// Admin.NET 项目的版权、商标、专利和其他相关权利均受相应法律法规的保护。使用本项目应遵守相关法律法规和许可证的要求。
+// Admin.NET 项目的版权、商标、专利和其他相关权利均受相应法律法规的保护。使用本项目应遵守相关法律法规和许可证的要求。
 //
 // 本项目主要遵循 MIT 许可证和 Apache 许可证（版本 2.0）进行分发和使用。许可证位于源代码树根目录中的 LICENSE-MIT 和 LICENSE-APACHE 文件。
 //
@@ -186,24 +186,25 @@ public class PayQuotaTest : IDisposable
     }
 
     [Fact]
-    public async Task 剩余额度归零_账号应置为已用完()
+    public async Task 锁定后_账号应置为占用中且不再被匹配()
     {
         var accountId = SeedAccount("EXHAUST-100", 100m);
 
         await _allocateService.TryLockQuotaAsync(TestType, 100m);
 
-        Assert.Equal(PayAccountStatusEnum.Exhausted, GetAccount(accountId).Status);
-        // 已用完的账号不再参与匹配
+        Assert.Equal(PayAccountStatusEnum.InUse, GetAccount(accountId).Status);
+        // 占用中的账号不再参与匹配（须管理员启用才释放）
         Assert.Null(await _allocateService.TryLockQuotaAsync(TestType, 1m));
     }
 
     [Fact]
-    public async Task 释放额度后恢复可用_账号状态应回到启用()
+    public async Task 落单失败补偿释放_应解除占用并回到启用()
     {
         var accountId = SeedAccount("EXHAUST-100", 100m);
         await _allocateService.TryLockQuotaAsync(TestType, 100m);
-        Assert.Equal(PayAccountStatusEnum.Exhausted, GetAccount(accountId).Status);
+        Assert.Equal(PayAccountStatusEnum.InUse, GetAccount(accountId).Status);
 
+        // allocate 落单失败补偿路径：ReleaseQuotaAsync 同时解除 InUse
         await _allocateService.ReleaseQuotaAsync(accountId, 100m);
 
         Assert.Equal(PayAccountStatusEnum.Enabled, GetAccount(accountId).Status);

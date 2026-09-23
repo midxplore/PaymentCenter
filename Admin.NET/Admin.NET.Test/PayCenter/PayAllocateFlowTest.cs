@@ -157,7 +157,7 @@ public class PayAllocateFlowTest : IDisposable
     }
 
     [Fact]
-    public async Task 额度恰好用尽后_该账号应被自动下架且不再被匹配()
+    public async Task 分配后_该账号应置为占用中且不再被匹配()
     {
         var accountId = SeedAccount(100m);
 
@@ -165,10 +165,10 @@ public class PayAllocateFlowTest : IDisposable
         Assert.NotNull(output.OrderNo);
 
         var account = _db.Queryable<PayAccount>().First(u => u.Id == accountId);
-        Assert.Equal(PayAccountStatusEnum.Exhausted, account.Status);
+        Assert.Equal(PayAccountStatusEnum.InUse, account.Status);
         Assert.Equal(100m, account.LockedQuota);
 
-        // 已用完的账号不再参与匹配
+        // 占用中的账号不再参与匹配
         await Assert.ThrowsAnyAsync<Exception>(() => _allocateService.Allocate(BuildInput(1m, ExternalNoPrefix + "after")));
     }
 }

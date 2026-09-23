@@ -103,6 +103,14 @@ export interface OpenAccessOutput {
     scopes?: string | null;
 
     /**
+     * 商户 Webhook 回调地址
+     *
+     * @type {string}
+     * @memberof OpenAccessOutput
+     */
+    webhookUrl?: string | null;
+
+    /**
      * @type {StatusEnum}
      * @memberof OpenAccessOutput
      */

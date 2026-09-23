@@ -35,7 +35,7 @@
       "DefaultIndex": "paymentcenter" // 索引
     },
     "Monitor": {
-      "GlobalEnabled": true, // 启用全局拦截日志（建议生产环境关闭，否则对性能有影响）
+      "GlobalEnabled": false, // 启用全局拦截日志（建议生产环境关闭，否则对性能有影响）
       "IncludeOfMethods": [], // 拦截特定方法，当GlobalEnabled=false有效
       "ExcludeOfMethods": [], // 排除特定方法，当GlobalEnabled=true有效
       "BahLogLevel": "Information", // Oops.Oh 和 Oops.Bah 业务日志输出级别

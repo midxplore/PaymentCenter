@@ -60,10 +60,18 @@
 								<el-option v-for="item in scopeOptions" :key="item.value" :label="item.label" :value="item.value" />
 							</el-select>
 							<div class="scope-tip">
-								仅对开放接口生效；逗号分隔，可自定义。收款匹配填 <b>allocate</b>，到账通知填 <b>notify</b>。
+								仅对开放接口生效；逗号分隔，可自定义。收款匹配 / 查状态填 <b>allocate</b>。
+								<br />
+								到账改由平台确认并通过 Webhook 通知，<b>勿再授权 notify</b>（对外接口已下线）。
 								<br />
 								<b>留空 = 拒绝一切调用</b>（不是「不限制」）：未勾选任何范围的凭证，所有开放接口都会被拒绝。
 							</div>
+						</el-form-item>
+					</el-col>
+					<el-col :xs="24" :sm="24" :md="24" :lg="24" :xl="24" class="mb20">
+						<el-form-item label="Webhook" prop="webhookUrl">
+							<el-input v-model="state.ruleForm.webhookUrl" placeholder="https://下游域名/webhook（可空）" clearable />
+							<div class="scope-tip">订单终态（Completed / Expired）会 POST JSON 到此地址；对方须返回正文 <b>success</b>。留空则不派发。</div>
 						</el-form-item>
 					</el-col>
 					<el-col :xs="24" :sm="12" :md="12" :lg="12" :xl="12" class="mb20">
@@ -114,8 +122,7 @@ const secretRules = computed(() => (isEdit.value ? [] : [{ required: true, messa
 
 // 权限范围可选项（支持手动输入自定义值）
 const scopeOptions = [
-	{ label: 'allocate（收款匹配：下单 / 查状态）', value: 'allocate' },
-	{ label: 'notify（到账通知）', value: 'notify' },
+	{ label: 'allocate（收款匹配 / 查状态）', value: 'allocate' },
 ];
 
 // Scopes 在接口上是「逗号分隔字符串」，界面用多选数组，这里做双向转换

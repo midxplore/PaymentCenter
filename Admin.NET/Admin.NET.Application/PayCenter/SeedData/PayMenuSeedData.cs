@@ -82,6 +82,8 @@ public class PayMenuSeedData : ISqlSugarEntitySeedData<SysMenu>
             new SysMenu{ Id=1300000000225, Pid=1300000000221, Title="按单号详情", Permission="payOrder/detailByNo", Type=MenuTypeEnum.Btn, CreateTime=createTime, OrderNo=130 },
             new SysMenu{ Id=1300000000226, Pid=1300000000221, Title="状态选项", Permission="payOrder/statusOptions", Type=MenuTypeEnum.Btn, CreateTime=createTime, OrderNo=140 },
             new SysMenu{ Id=1300000000227, Pid=1300000000221, Title="导出到账流水", Permission="payExport/exportNotify", Type=MenuTypeEnum.Btn, CreateTime=createTime, OrderNo=150 },
+            new SysMenu{ Id=1300000000228, Pid=1300000000221, Title="确认到账", Permission="payOrder/confirmReceived", Type=MenuTypeEnum.Btn, CreateTime=createTime, OrderNo=160 },
+            new SysMenu{ Id=1300000000229, Pid=1300000000221, Title="上传水单", Permission="payOrder/uploadVoucher", Type=MenuTypeEnum.Btn, CreateTime=createTime, OrderNo=170 },
 
             //// 异常到账台账（F5）
             new SysMenu{ Id=1300000000231, Pid=1300000000201, Title="异常到账", Path="/paycenter/abnormal", Name="payAbnormal", Component="/paycenter/abnormal/index", Icon="ele-WarningFilled", Type=MenuTypeEnum.Menu, CreateTime=createTime, OrderNo=120 },

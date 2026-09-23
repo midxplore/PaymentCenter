@@ -151,8 +151,8 @@ public class PayAccountService : IDynamicApiController, ITransient
     {
         var account = await _payAccountRep.GetByIdAsync(input.Id) ?? throw Oops.Oh(ErrorCodeEnum.API_ACCOUNT_NOT_FOUND);
 
-        // 「已用完」是系统自动状态，不允许手工设置
-        if (input.Status == PayAccountStatusEnum.Exhausted)
+        // 「已用完 / 占用中」是系统状态，不允许手工设为这两项
+        if (input.Status == PayAccountStatusEnum.Exhausted || input.Status == PayAccountStatusEnum.InUse)
             throw Oops.Oh(ErrorCodeEnum.API_STATUS_READONLY);
 
         // 启用前校验剩余额度，避免出现"启用但无额度"的无效状态
@@ -255,7 +255,7 @@ public class PayAccountService : IDynamicApiController, ITransient
     [DisplayName("启用/停用收款账号")]
     public async Task SetStatus(SetPayAccountStatusInput input)
     {
-        if (input.Status == PayAccountStatusEnum.Exhausted)
+        if (input.Status == PayAccountStatusEnum.Exhausted || input.Status == PayAccountStatusEnum.InUse)
             throw Oops.Oh(ErrorCodeEnum.API_STATUS_READONLY);
 
         var account = await _payAccountRep.GetByIdAsync(input.Id) ?? throw Oops.Oh(ErrorCodeEnum.API_ACCOUNT_NOT_FOUND);
@@ -308,8 +308,8 @@ public class PayAccountService : IDynamicApiController, ITransient
     /// <para>
     /// 供追加额度（F1.2）、额度释放与过期回收（F3.2）、到账结转（F4）等额度变动流程在写完后调用：
     /// 剩余归零 → 自动置「已用完」；剩余恢复为正 → 自动回置「启用」重新参与匹配。
-    /// 两个方向都用条件更新，天然幂等，也不会覆盖管理员手工「停用」的状态
-    /// （只处理 Enabled ⇄ Exhausted 之间的迁移）。
+    /// 两个方向都用条件更新，天然幂等，也不会覆盖管理员手工「停用」或分配后的「占用中」
+    /// （只处理 Enabled ⇄ Exhausted 之间的迁移；InUse 须管理员显式启用才释放）。
     /// </para>
     /// <para>
     /// 注意：匹配（F2）路径<b>不</b>调用本方法 —— 那里的「额度耗尽置位」已内联进

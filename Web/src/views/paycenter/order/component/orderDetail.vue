@@ -31,6 +31,10 @@
 						<span v-if="(state.detail.order?.outstandingAmount ?? 0) < 0" class="tip">（负数＝超额到账）</span>
 					</el-descriptions-item>
 					<el-descriptions-item label="超额到账备注">{{ state.detail.order?.overpayRemark || '-' }}</el-descriptions-item>
+					<el-descriptions-item label="水单" :span="2">
+						<a v-if="state.detail.order?.voucherUrl" :href="state.detail.order.voucherUrl" target="_blank" rel="noopener">查看水单</a>
+						<span v-else>-</span>
+					</el-descriptions-item>
 					<el-descriptions-item label="创建时间">{{ fmtTime(state.detail.order?.createTime) }}</el-descriptions-item>
 					<el-descriptions-item label="过期时间">{{ fmtTime(state.detail.order?.expireTime) }}</el-descriptions-item>
 					<el-descriptions-item label="完成时间">{{ fmtTime(state.detail.order?.completeTime) || '-' }}</el-descriptions-item>

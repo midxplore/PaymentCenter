@@ -88,31 +88,22 @@ public class PayAllocateService : ITransient
         if (PayConst.HasExcessScale(input.Amount))
             throw Oops.Oh(ErrorCodeEnum.API_AMOUNT_INVALID, $"小数位不能超过 {PayConst.AmountScale} 位");
 
-        var externalNo = string.IsNullOrWhiteSpace(input.ExternalNo) ? null : input.ExternalNo.Trim();
+        if (string.IsNullOrWhiteSpace(input.ExternalNo))
+            throw Oops.Bah("商家订单号不能为空");
+        var externalNo = input.ExternalNo.Trim();
         var clientId = await ResolveRequiredClientIdAsync();
 
         // ── 步骤 1：幂等前置检查（F2.6）────────────────────────────────
         // ★ 幂等键是 (ClientId, ExternalNo) 组合，**必须带 ClientId**。
-        //   只按 ExternalNo 查会让不同接入方之间互相串单：
-        //   B 用了与 A 相同的业务单号时，会直接命中 A 的订单并把它（含收款账号明文）返回给 B，
-        //   而 B 自己的收款请求根本没被分配 —— 钱可能进错账户，双方都收不到任何报错。
-        //   详见 PayOrder.ExternalNo 的说明。
-        if (externalNo != null)
         {
             var existing = await FindByIdempotencyKeyAsync(clientId, externalNo);
             if (existing != null)
             {
-                // ★ 幂等命中前先校验「本次参数与原订单是否一致」（F2.6 冲突检测）。
-                //   缺少这一步时，接入方改了金额重试会**静默拿到原金额的订单**：
-                //   它以为按新金额下过单，实际收款账号是按旧金额分配的 —— 与「钱进错账户」
-                //   同类的静默失效（不报错、难以发现），必须显式报冲突。
                 await EnsureIdempotentConsistentAsync(existing, type, input.Amount);
 
-                // 幂等命中也要留痕：它是「接入方在重试」的直接证据，
-                // 出现异常高频时可以据此定位「接入方把幂等接口当轮询用了」。
                 await _payAuditService.WriteOpenApiAsync(PayAuditActionEnum.ApiCall,
                     PayConst.AuditTargetTypeOrder, existing.Id, existing.OrderNo,
-                    $"查询匹配·幂等命中：外部单号 {externalNo} 已存在订单（金额 {existing.RequestAmount:0.00}），本次未重新匹配、未占用额度");
+                    $"查询匹配·幂等命中：商家订单号 {externalNo} 已存在订单（金额 {existing.RequestAmount:0.00}），本次未重新匹配、未占用额度");
 
                 return await BuildOutputAsync(existing, type, true);
             }
@@ -136,13 +127,10 @@ public class PayAllocateService : ITransient
 
             // (ClientId, ExternalNo) 唯一索引冲突（并发提交同一调用方的同一外部单号）
             // → 回退为返回已存在的那笔订单
-            if (externalNo != null)
             {
                 var existing = await FindByIdempotencyKeyAsync(clientId, externalNo);
                 if (existing != null)
                 {
-                    // 并发路径同样要查参数一致性：两笔并发请求可能带着不同金额进来，
-                    // 抢输的那笔若不校验就会把「另一笔参数的订单」当成自己的成功结果返回。
                     await EnsureIdempotentConsistentAsync(existing, type, input.Amount);
                     return await BuildOutputAsync(existing, type, true);
                 }
@@ -333,10 +321,7 @@ public class PayAllocateService : ITransient
         const string sql = @"
 UPDATE pay_account
    SET LockedQuota = LockedQuota + @amount,
-       Status      = CASE
-                       WHEN TotalQuota <= UsedQuota + LockedQuota + @amount THEN @exhausted
-                       ELSE Status
-                     END,
+       Status      = @inUse,
        UpdateTime  = @now
  WHERE Id = (
         SELECT Id
@@ -345,7 +330,10 @@ UPDATE pay_account
            AND Status = @enabled
            AND IsDelete = false
            AND TotalQuota >= UsedQuota + LockedQuota + @amount
-         ORDER BY (TotalQuota - UsedQuota - LockedQuota) ASC, CreateTime ASC
+         ORDER BY EmptyExpireCount ASC,
+                  LastSuccessTime DESC NULLS LAST,
+                  (TotalQuota - UsedQuota - LockedQuota) ASC,
+                  CreateTime ASC
          LIMIT 1
            FOR UPDATE
        )
@@ -359,7 +347,7 @@ RETURNING Id;";
             new SugarParameter("@now", DateTime.Now),
             new SugarParameter("@type", type),
             new SugarParameter("@enabled", (int)PayAccountStatusEnum.Enabled),
-            new SugarParameter("@exhausted", (int)PayAccountStatusEnum.Exhausted));
+            new SugarParameter("@inUse", (int)PayAccountStatusEnum.InUse));
 
         return ids.Count > 0 ? ids[0] : null;
     }
@@ -374,17 +362,27 @@ RETURNING Id;";
     public async Task ReleaseQuotaAsync(long accountId, decimal amount)
     {
         // 带下界守卫，避免任何异常路径把 LockedQuota 减成负数。
-        await _payAccountRep.AsUpdateable()
-            .SetColumns(u => new PayAccount
-            {
-                LockedQuota = u.LockedQuota - amount,
-                UpdateTime = DateTime.Now
-            })
-            .Where(u => u.Id == accountId && u.LockedQuota >= amount)
-            .ExecuteCommandAsync();
+        // ★ allocate 落单失败补偿：必须同时解除 InUse，否则账号永久占住、无法再匹配。
+        //   过期/确认到账路径不走本方法（它们故意保持 InUse，等管理员启用）。
+        const string sql = @"
+UPDATE pay_account
+   SET LockedQuota = LockedQuota - @amount,
+       Status      = CASE
+                       WHEN TotalQuota <= UsedQuota + LockedQuota - @amount THEN @exhausted
+                       ELSE @enabled
+                     END,
+       UpdateTime  = @now
+ WHERE Id = @id
+   AND LockedQuota >= @amount
+   AND Status = @inUse;";
 
-        // 额度恢复后可能重新具备可匹配性，同步状态（F1.4）
-        await _payAccountService.SyncStatusByQuotaAsync(accountId);
+        await _db.Ado.ExecuteCommandAsync(sql,
+            new SugarParameter("@amount", amount),
+            new SugarParameter("@id", accountId),
+            new SugarParameter("@now", DateTime.Now),
+            new SugarParameter("@enabled", (int)PayAccountStatusEnum.Enabled),
+            new SugarParameter("@exhausted", (int)PayAccountStatusEnum.Exhausted),
+            new SugarParameter("@inUse", (int)PayAccountStatusEnum.InUse));
     }
 
     /// <summary>

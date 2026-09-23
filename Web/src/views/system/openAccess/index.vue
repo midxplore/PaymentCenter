@@ -106,6 +106,7 @@ const options = useVxeTable<OpenAccessOutput>(
 			{ field: 'accessKey', title: '身份标识', minWidth: 200, showOverflow: 'tooltip' },
 			{ field: 'accessSecret', title: '密钥（掩码）', minWidth: 200, showOverflow: 'tooltip' },
 			{ field: 'scopes', title: '权限范围', minWidth: 160, showOverflow: 'tooltip' },
+			{ field: 'webhookUrl', title: 'Webhook', minWidth: 200, showOverflow: 'tooltip' },
 			{ field: 'status', title: '状态', width: 90, slots: { default: 'row_status' } },
 			{ field: 'bindUserAccount', title: '绑定用户账号', minWidth: 200, showOverflow: 'tooltip' },
 			{ field: 'bindTenantName', title: '绑定租户名称', minWidth: 200, showOverflow: 'tooltip' },

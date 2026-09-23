@@ -75,7 +75,7 @@ public class PayConst
     /// <summary>
     /// 订单全局过期时长默认值（分钟）
     /// </summary>
-    public const int DefaultOrderExpireMinutes = 30;
+    public const int DefaultOrderExpireMinutes = 120;
 
     /// <summary>
     /// 过期扫描单批次处理条数
@@ -119,31 +119,43 @@ public class PayConst
     public const string ScopeAllocate = "allocate";
 
     /// <summary>
-    /// 权限范围：到账通知（F6.2）
+    /// 权限范围：到账通知（历史保留；对外开放已下线，勿再给新凭证授权）
     /// </summary>
     public const string ScopeNotify = "notify";
 
     /// <summary>
+    /// Webhook 地址列宽（与 SysOpenAccess.WebhookUrl / schema 联动）
+    /// </summary>
+    public const int WebhookUrlLength = 512;
+
+    /// <summary>
+    /// 水单路径列宽（与 PayOrder.VoucherUrl / schema 联动）
+    /// </summary>
+    public const int VoucherUrlLength = 512;
+
+    /// <summary>
+    /// Webhook outbox 派发作业标识
+    /// </summary>
+    public const string WebhookJobId = "pay_webhook_dispatch_job";
+
+    /// <summary>
+    /// Webhook outbox 派发触发器标识
+    /// </summary>
+    public const string WebhookJobTriggerId = "pay_webhook_dispatch_trigger";
+
+    /// <summary>
+    /// Webhook 单次 HTTP 超时（秒）
+    /// </summary>
+    public const int WebhookHttpTimeoutSeconds = 10;
+
+    /// <summary>
+    /// Webhook 派发单批次条数
+    /// </summary>
+    public const int WebhookDispatchBatchSize = 50;
+
+    /// <summary>
     /// 权限范围：未归类接口（fail-closed 兜底）
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// 用于「路径落在 <c>/api/pay*</c> 下、但既没有 <c>[PayScope]</c> 声明、
-    /// 也匹配不上已知路径模式」的接口 —— 即**新加了开放接口却忘了声明权限范围**。
-    /// </para>
-    /// <para>
-    /// 这种情况下解析器返回本值而不是 null。差别是决定性的：
-    /// <list type="bullet">
-    /// <item>返回 null = <b>不限制</b>（fail-open）→ 任何持有效密钥的接入方都能调，等于接口默认敞开；</item>
-    /// <item>返回本值 = <b>要求一个默认无人持有的 scope</b>（fail-closed）→ 默认拒绝，
-    /// 错误信息里直接写出 <c>需要 scope=unclassified</c>，开发者在联调第一分钟就能发现漏声明。</item>
-    /// </list>
-    /// </para>
-    /// <para>
-    /// 真要让某个未归类接口可用，必须**显式**把它加进某把密钥的 Scopes 里 ——
-    /// 也就是必须有人做一次有意识的授权决定，而不是靠「忘了配置」获得放行。
-    /// </para>
-    /// </remarks>
     public const string ScopeUnclassified = "unclassified";
 
     /// <summary>

@@ -1,4 +1,3 @@
-import '../lang/index';
 import { createApp } from 'vue';
 import pinia from '/@/stores/index';
 import App from '/@/App.vue';
@@ -8,25 +7,16 @@ import { i18n } from '/@/i18n/index';
 import other from '/@/utils/other';
 import ElementPlus from 'element-plus';
 import '/@/theme/index.scss';
-// 动画库
-import 'animate.css';
-// 栅格布局
-import VueGridLayout from 'vue-grid-layout';
-// 电子签名
-import VueSignaturePad from 'vue-signature-pad';
-// 组织架构图
-import vue3TreeOrg from 'vue3-tree-org';
-import 'vue3-tree-org/lib/vue3-tree-org.css';
-// VForm3 表单设计
-import VForm3 from 'vform3-builds';
-import 'vform3-builds/dist/designer.style.css';
-// Vxe-Table
+// Vxe-Table（支付中心列表页刚需，保留全局）
 import { setupVXETable } from '/@/hooks/setupVXETableHook';
 // 自定义字典组件
 import sysDict from '/@/components/sysDict/sysDict.vue';
-// 关闭自动打印
-import { disAutoConnect } from 'vue-plugin-hiprint';
-disAutoConnect();
+
+// ★ 不加载 vite-auto-i18n 的 lang/index（自动翻译运行时）；vue-i18n 仍走 /@/i18n
+// ★ 以下框架能力按需加载，不在此全局 import（代码与依赖保留，进对应页面再注册）：
+//   animate.css / vue-grid-layout / vue-signature-pad / vue3-tree-org /
+//   vform3-builds / vue-plugin-hiprint
+//   见 /@/utils/lazyFrameworkPlugins.ts
 
 const app = createApp(App);
 directive(app);
@@ -35,4 +25,4 @@ other.elSvg(app);
 // 注册全局字典组件
 app.component('GSysDict', sysDict);
 
-app.use(pinia).use(i18n).use(router).use(ElementPlus).use(setupVXETable).use(VueGridLayout).use(VForm3).use(VueSignaturePad).use(vue3TreeOrg).mount('#app');
+app.use(pinia).use(i18n).use(router).use(ElementPlus).use(setupVXETable).mount('#app');

@@ -11,20 +11,6 @@ namespace Admin.NET.Application;
 /// <summary>
 /// 到账通知服务（F4）★核心
 /// </summary>
-/// <remarks>
-/// <para>流程见设计文档 §5.2：凭证号去重 → 查订单 → 终态判断 → 累加到账（CAS）→ 判定新状态 → 事件流水。</para>
-/// <para>
-/// 并发安全要点：<b>所有状态变更都带条件守卫</b>，保证与过期任务（F3.2）、其他到账通知并发时不出错。
-/// </para>
-/// <para>
-/// ★ <b>HTTP 入口已移到 <see cref="PayNotifyController"/>（PayCenter/Controllers/）</b>：
-/// 对外接口族集中在一个目录。本类保留全部业务逻辑，因为人工关联
-/// （<see cref="PayAbnormalService"/>）与单元测试是<b>直接调用</b>
-/// <see cref="ApplyReceiptCoreAsync"/> / <see cref="Notify"/> 的。
-/// 因此本类<b>不再实现</b> <see cref="IDynamicApiController"/>：服务里已无 HTTP 端点，
-/// 若继续实现该接口，本类的 public 方法会被重新推导成路由。
-/// </para>
-/// </remarks>
 public class PayNotifyService : ITransient
 {
     private readonly SqlSugarRepository<PayOrder> _payOrderRep;
@@ -75,10 +61,6 @@ public class PayNotifyService : ITransient
         var voucherNo = input.VoucherNo?.Trim();
         if (string.IsNullOrWhiteSpace(orderNo) || string.IsNullOrWhiteSpace(voucherNo) || input.Amount <= 0)
             throw Oops.Oh(ErrorCodeEnum.API_NOTIFY_INVALID);
-        // ★ 同 allocate：超出列精度的到账金额会静默改变累计额（额度结转按实际到账算），
-        //   必须在入口拒绝，见 PayConst.HasExcessScale。
-        if (PayConst.HasExcessScale(input.Amount))
-            throw Oops.Oh(ErrorCodeEnum.API_AMOUNT_INVALID, $"小数位不能超过 {PayConst.AmountScale} 位");
 
         var notifyTime = input.NotifyTime ?? DateTime.Now;
         // 通知方身份：既是 (ClientId, VoucherNo) 去重键的一半，也是审计主体。
@@ -193,8 +175,7 @@ public class PayNotifyService : ITransient
                 Result = PayConst.NotifyResultAccepted,
                 ResultText = applied.Status == PayOrderStatusEnum.Completed ? "订单已完成" : "已受理，部分到账",
                 OrderNo = applied.OrderNo,
-                // 与 BuildOutput 同一口径：对外回枚举名称而非中文描述
-                OrderStatus = applied.Status.ToString(),
+                OrderStatus = applied.Status.GetDescription(),
                 ReceivedAmount = applied.ReceivedAmount,
                 RequestAmount = applied.RequestAmount
             };
@@ -416,10 +397,7 @@ public class PayNotifyService : ITransient
             Result = result,
             ResultText = resultText,
             OrderNo = order?.OrderNo,
-            // ★ 对外回**枚举名称**（Pending/Partial/Completed/Expired），不是中文描述：
-            //   中文属于展示层，接入方要的是可稳定判定的机器值。
-            //   与 /api/pay/status 的 status 字段口径一致（见接口文档 §6.2）。
-            OrderStatus = order == null ? null : order.Status.ToString(),
+            OrderStatus = order == null ? null : order.Status.GetDescription(),
             ReceivedAmount = order?.ReceivedAmount ?? 0m,
             RequestAmount = order?.RequestAmount ?? 0m
         };

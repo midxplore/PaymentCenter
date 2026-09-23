@@ -95,6 +95,11 @@ export interface AddOpenAccessInput {
     scopes?: string | null;
 
     /**
+     * 商户 Webhook 回调地址
+     */
+    webhookUrl?: string | null;
+
+    /**
      * @type {StatusEnum}
      * @memberof AddOpenAccessInput
      */

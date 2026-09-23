@@ -28,7 +28,8 @@
 					<li>
 						<b>权限范围（Scopes）</b>：同一身份可被多个开放接口复用，用「权限范围」限制它只能访问哪些接口，实现最小权限隔离
 						<ul>
-							<li>取值为逗号分隔的字符串，如 <el-tag effect="plain">allocate</el-tag>、<el-tag effect="plain">notify</el-tag>、<el-tag effect="plain">allocate,notify</el-tag></li>
+							<li>取值为逗号分隔的字符串，如 <el-tag effect="plain">allocate</el-tag>（收款匹配 / 查状态）</li>
+							<li>到账由平台确认并通过 Webhook 通知，勿再授权历史 scope <el-tag effect="plain">notify</el-tag></li>
 							<li><b>留空视为未授权任何接口，请求会被拒绝</b>（fail-closed，而非放行）</li>
 							<li>修改后立即生效（服务端会自动清理该身份的缓存）</li>
 						</ul>
@@ -61,14 +62,20 @@
 				<h3>计算签名</h3>
 				<ul>
 					<li>
-						按照如下顺序对请求中的参数进行排序，各个参数通过&进行拼接（中间不含空格）：
-						<p><el-tag style="border: 1 solid var(--el-border-color)">method & url & accessKey & timestamp & nonce</el-tag></p>
+						按照如下顺序对请求中的参数进行拼接（中间不含空格）：
+						<p><el-tag style="border: 1 solid var(--el-border-color)">method & url & accessKey & timestamp & nonce & bodySha256Hex</el-tag></p>
 						<ul>
 							<li><el-tag effect="plain">method</el-tag> 需要大写，如：GET</li>
-							<li><el-tag effect="plain">url</el-tag> 去除协议、域名、参数，以 / 开头，如：/api/demo/helloWord</li>
+							<li><el-tag effect="plain">url</el-tag> 去除协议、域名、参数，以 / 开头，如：/api/pay/allocate</li>
+							<li>
+								<el-tag effect="plain">bodySha256Hex</el-tag>：对<strong>即将发送的请求体原始字节</strong>做 SHA-256，再输出小写 hex（64 字符）。
+								无正文（GET）时对空字节取哈希，固定为
+								<code>e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855</code>。
+								用于防止中间人篡改金额等业务字段。
+							</li>
 						</ul>
 					</li>
-					<li>使用 HMAC-SHA256 协议创建基于哈希的消息身份验证代码 (HMAC)，以 <el-tag effect="plain">accessSecret</el-tag> 作为密钥，对上面拼接的参数进行计算签名，所得签名进行 Base-64 编码</li>
+					<li>使用 HMAC-SHA256，以 <el-tag effect="plain">accessSecret</el-tag> 作为密钥，对上面拼接串计算签名，再 Base64 编码得到 <el-tag effect="plain">sign</el-tag></li>
 				</ul>
 			</div>
 			<div class="el-alert el-alert--info is-light">

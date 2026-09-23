@@ -66,4 +66,20 @@ export interface GenerateSignatureInput {
      * @memberof GenerateSignatureInput
      */
     nonce: string;
+
+    /**
+     * 请求正文原文（与线上发送字节一致；空=无正文）
+     *
+     * @type {string}
+     * @memberof GenerateSignatureInput
+     */
+    body?: string | null;
+
+    /**
+     * 已算好的正文 SHA-256（小写 hex）；与 body 同时有时以 body 为准
+     *
+     * @type {string}
+     * @memberof GenerateSignatureInput
+     */
+    bodySha256Hex?: string | null;
 }

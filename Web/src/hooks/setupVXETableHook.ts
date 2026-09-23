@@ -8,14 +8,16 @@ import '@vxe-ui/plugin-render-element/dist/style.css';
 // Vxe UI 组件库
 import VxeUI, { VxeComponentSizeType } from 'vxe-pc-ui';
 import { i18n } from '/@/i18n';
-import ExcelJS from 'exceljs';
 import { useThemeConfig } from '/@/stores/themeConfig';
 const vxeSize: VxeComponentSizeType = useThemeConfig().themeConfig.globalComponentSize == 'small' ? 'mini' : useThemeConfig().themeConfig.globalComponentSize == 'default' ? 'small' : 'medium';
 
 export const setupVXETable = (app: App<Element>) => {
 	// 加载插件
 	VxeUITable.use(VxeUIPluginRenderElement);
-	VxeUITable.use(VxeUIPluginExportXLSX, { ExcelJS: ExcelJS });
+	// exceljs 仅导出时需要：异步注入，避免首屏拖入大包（依赖与导出能力都保留）
+	void import('exceljs').then((mod) => {
+		VxeUITable.use(VxeUIPluginExportXLSX, { ExcelJS: mod.default });
+	});
 	VxeUITable.setTheme('light'); // 主题颜色
 	// VXETable全局配置https://vxetable.cn/v4.7/#/table/start/global
 	VxeUITable.setConfig({

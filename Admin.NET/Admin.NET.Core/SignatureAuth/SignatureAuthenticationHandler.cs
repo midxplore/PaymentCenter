@@ -71,9 +71,9 @@ public sealed class SignatureAuthenticationHandler : AuthenticationHandler<Signa
         if (string.IsNullOrEmpty(accessSecret))
             return await AuthenticateResultFailAsync("accessKey 无效");
 
-        // 校验签名
+        // 校验签名（含请求体 SHA-256，防中间人改金额等业务字段）
         var appSecretByte = Encoding.UTF8.GetBytes(accessSecret);
-        string serverSign = SignData(appSecretByte, GetMessageForSign(Context));
+        string serverSign = SignData(appSecretByte, await GetMessageForSignAsync(Context));
 
         // ★ 常量时间比较，不要写成 serverSign != sign。
         //
@@ -126,16 +126,45 @@ public sealed class SignatureAuthenticationHandler : AuthenticationHandler<Signa
     /// <summary>
     /// 获取用于签名的消息
     /// </summary>
-    /// <returns></returns>
-    private static string GetMessageForSign(HttpContext context)
+    /// <remarks>
+    /// 待签名文本：
+    /// <c>METHOD&amp;PATH&amp;accessKey&amp;timestamp&amp;nonce&amp;BODY_SHA256_HEX</c>。
+    /// <para>
+    /// ★ <c>BODY_SHA256_HEX</c> 是请求体原始字节的 SHA-256（小写 hex）。
+    /// 无正文（如 GET）时对空字节序列取哈希（
+    /// <c>e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855</c>）。
+    /// 必须对「线上实际传输的字节」取哈希，不能对重新序列化后的 JSON 取哈希，
+    /// 否则空格/字段顺序差异会让合法客户端验签失败。
+    /// </para>
+    /// </remarks>
+    private static async Task<string> GetMessageForSignAsync(HttpContext context)
     {
         var method = context.Request.Method; // 请求方法（大写）
         var url = context.Request.Path; // 请求 url，去除协议、域名、参数，以 / 开头
         var accessKey = context.Request.Headers["accessKey"].FirstOrDefault(); // 身份标识
-        var timestamp = context.Request.Headers["timestamp"].FirstOrDefault(); // 时间戳，精确到秒
+        var timestamp = context.Request.Headers["timestamp"].FirstOrDefault(); // 时间戳
         var nonce = context.Request.Headers["nonce"].FirstOrDefault(); // 唯一随机数
+        var bodySha256Hex = await ComputeRequestBodySha256HexAsync(context.Request);
 
-        return $"{method}&{url}&{accessKey}&{timestamp}&{nonce}";
+        return $"{method}&{url}&{accessKey}&{timestamp}&{nonce}&{bodySha256Hex}";
+    }
+
+    /// <summary>
+    /// 计算请求体 SHA-256（小写 hex），并复位 Body 供后续模型绑定继续读。
+    /// </summary>
+    private static async Task<string> ComputeRequestBodySha256HexAsync(HttpRequest request)
+    {
+        request.EnableBuffering();
+        if (request.Body.CanSeek)
+            request.Body.Position = 0;
+
+        using var sha = SHA256.Create();
+        var hash = await sha.ComputeHashAsync(request.Body);
+
+        if (request.Body.CanSeek)
+            request.Body.Position = 0;
+
+        return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
     /// <summary>

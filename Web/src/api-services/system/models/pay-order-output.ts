@@ -148,6 +148,14 @@ export interface PayOrderOutput {
     overpayRemark?: string | null;
 
     /**
+     * 确认到账水单路径
+     *
+     * @type {string}
+     * @memberof PayOrderOutput
+     */
+    voucherUrl?: string | null;
+
+    /**
      * 创建时间
      *
      * @type {Date}

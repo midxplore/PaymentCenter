@@ -5,9 +5,8 @@
 				<el-icon size="16" style="margin-right: 3px; display: inline; vertical-align: middle"> <ele-Postcard /> </el-icon>简介(About)
 			</h4>
 			<span class="text">
-				支付中心 · 收款账号分配系统。后台维护一批收款账号/收款码与各自总额度，业务方按「收款类型 + 金额」调用
-				<code>POST /api/pay/allocate</code> 领用一个额度充足的账号并生成订单；到账由外部系统通过
-				<code>POST /api/pay/notify</code> 异步上报（支持分次到账），最终形成一条可审计的收款流水闭环。
+				马上付 · 收款账号分配平台。后台维护收款账号/收款码与额度；下游按「商家订单号 + 收款类型 + 金额」调用
+				<code>POST /api/pay/allocate</code> 获取收款信息并生成订单；到账由平台确认后经 Webhook 通知下游，形成可审计闭环。
 			</span>
 		</div>
 

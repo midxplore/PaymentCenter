@@ -54,6 +54,14 @@ export interface UpdateOpenAccessInput {
     scopes?: string | null;
 
     /**
+     * 商户 Webhook 回调地址
+     *
+     * @type {string}
+     * @memberof UpdateOpenAccessInput
+     */
+    webhookUrl?: string | null;
+
+    /**
      * 绑定租户Id
      *
      * @type {number}

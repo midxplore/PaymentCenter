@@ -44,15 +44,33 @@ export const router = createRouter({
 });
 
 /**
+ * 深拷贝路由树（保留 component 函数引用）。
+ * formatFlatteningRoutes 会改 children，必须先拷贝，否则侧栏菜单树被改坏。
+ */
+export function copyRouteTree(routes: any[]): any[] {
+	return (routes || []).map((r) => {
+		const n = { ...r };
+		if (r.children?.length) n.children = copyRouteTree(r.children);
+		return n;
+	});
+}
+
+/**
  * 路由多级嵌套数组处理成一维数组
  * @param arr 传入路由菜单数据数组
  * @returns 返回处理后的一维路由菜单数组
  */
 export function formatFlatteningRoutes(arr: any) {
-	if (arr.length <= 0) return false;
+	if (!arr || arr.length <= 0) return false;
 	for (let i = 0; i < arr.length; i++) {
 		if (arr[i].children) {
-			arr = arr.slice(0, i + 1).concat(arr[i].children, arr.slice(i + 1));
+			// ★ 取出子级后必须清掉 parent.children：
+			//   否则 formatTwoStageRoutes 把「仍带 children 的目录」再挂回 `/`，形成假嵌套。
+			//   目录 component=Layout 经 dynamicImport 为 undefined，或被映射成 parent.vue 时，
+			//   会出现重复 name + 双 keep-alive，症状：侧栏正常、内容空白、切页卡死。
+			const children = arr[i].children;
+			delete arr[i].children;
+			arr = arr.slice(0, i + 1).concat(children, arr.slice(i + 1));
 		}
 	}
 	return arr;
@@ -75,6 +93,8 @@ export function formatTwoStageRoutes(arr: any) {
 		if (v.path === '/') {
 			newArr.push({ component: v.component, name: v.name, path: v.path, redirect: v.redirect, meta: v.meta, children: [] });
 		} else {
+			// 目录（Layout）无 component：扁平后只保留叶子页面，避免空壳路由抢匹配
+			if (!v.component) return;
 			// 判断是否是动态路由（xx/:id/:name），用于 tagsView 等中使用
 			// 修复：https://gitee.com/lyt-top/vue-next-admin/issues/I3YX6G
 			if (v.path.indexOf('/:') > -1) {
@@ -113,7 +133,7 @@ router.beforeEach(async (to, from, next) => {
 			Session.clear();
 			NProgress.done();
 		} else if (token && to.path === '/login') {
-			next('/dashboard/home');
+			next('/');
 			NProgress.done();
 		} else {
 			const storesRoutesList = useRoutesList(pinia);

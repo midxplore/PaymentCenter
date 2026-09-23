@@ -191,9 +191,39 @@ public class PayOrderOutput
     public string OverpayRemark { get; set; }
 
     /// <summary>
+    /// 确认到账水单路径
+    /// </summary>
+    public string VoucherUrl { get; set; }
+
+    /// <summary>
     /// 创建时间
     /// </summary>
     public DateTime CreateTime { get; set; }
+}
+
+/// <summary>
+/// 平台确认到账入参
+/// </summary>
+public class ConfirmReceivedInput
+{
+    /// <summary>
+    /// 订单 Id
+    /// </summary>
+    [Range(1, long.MaxValue, ErrorMessage = "订单不能为空")]
+    public long Id { get; set; }
+
+    /// <summary>
+    /// 水单路径（必填，先调 uploadVoucher）
+    /// </summary>
+    [Required(ErrorMessage = "水单不能为空")]
+    [MaxLength(PayConst.VoucherUrlLength, ErrorMessage = "水单路径过长")]
+    public string VoucherUrl { get; set; }
+
+    /// <summary>
+    /// 可选备注
+    /// </summary>
+    [MaxLength(256)]
+    public string Remark { get; set; }
 }
 
 /// <summary>

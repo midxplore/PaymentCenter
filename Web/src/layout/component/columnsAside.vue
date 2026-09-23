@@ -90,10 +90,8 @@ const onColumnsAsideMenuClick = async (v: RouteItem) => {
 		}
 	}
 
-	// 一个路由设置自动收起菜单
-	// https://gitee.com/lyt-top/vue-next-admin/issues/I6HW7H
-	if (!v.children || v.children?.length === 0) themeConfig.value.isCollapse = true;
-	else if (v.children.length > 1) themeConfig.value.isCollapse = false;
+	// 无二级菜单可展示时收起；有子项则展开（商户常见「目录下仅 1 个菜单」，原先 length>1 才展开会导致二级栏空白）
+	themeConfig.value.isCollapse = !v.children || v.children.length === 0;
 };
 // 鼠标移入时，显示当前的子级菜单
 const onColumnsAsideMenuMouseenter = (v: RouteRecordRaw, k: number) => {
@@ -121,38 +119,52 @@ const onColumnsAsideDown = (k: number) => {
 		setColumnsAsideMove(k);
 	});
 };
-// 设置只有一个路由时设置自动收起菜单
-// https://gitee.com/lyt-top/vue-next-admin/issues/I6UW2I
+// 按当前路由同步二级菜单展开状态
 const setMenuAutoCollaps = (path: string) => {
 	const resData: MittMenu = setSendChildren(path);
-	// https://gitee.com/lyt-top/vue-next-admin/issues/I6HW7H
-	(!resData.item?.redirect && resData.children.length == 0) || (resData.item?.redirect && resData.children.length <= 1)
-		? (themeConfig.value.isCollapse = true)
-		: (themeConfig.value.isCollapse = false);
+	// 有可展示的二级项就展开；空列表才收成 1px（原先「redirect + ≤1 子项就收起」会把商户二级栏默认藏掉）
+	themeConfig.value.isCollapse = resData.children.length === 0;
+	return resData;
+};
+// 把当前二级菜单推给 aside（可被 aside 就绪回调反复调用）
+const pushColumnsChildren = (path: string = route.path) => {
+	const resData: MittMenu = setMenuAutoCollaps(path);
+	onColumnsAsideDown(resData.item?.k);
+	mittBus.emit('setSendColumnsChildren', resData);
 	return resData;
 };
 // 设置/过滤路由（非静态路由/是否显示在菜单中）
 const setFilterRoutes = () => {
 	state.columnsAsideList = filterRoutesFun(routesList.value);
-	const resData: MittMenu = setMenuAutoCollaps(route.path);
-	onColumnsAsideDown(resData.item?.k);
-	// 延迟 500 毫秒更新，防止 aside.vue 组件 setSendColumnsChildren 还没有注册
-	setTimeout(() => {
-		mittBus.emit('setSendColumnsChildren', resData);
-	}, 500);
+	pushColumnsChildren(route.path);
 };
-// 传送当前子级数据到菜单中
+// 传送当前子级数据到菜单中（最长 path 前缀匹配，兼容无父目录的顶栏叶子菜单）
 const setSendChildren = (path: string) => {
-	const currentPathSplit = path.split('/');
-	let currentData: MittMenu = { children: [] };
-	state.columnsAsideList.map((v: RouteItem, k: number) => {
-		if (v.path === `/${currentPathSplit[1]}`) {
-			v['k'] = k;
-			currentData['item'] = { ...v };
-			currentData['children'] = [{ ...v }];
-			if (v.children) currentData['children'] = v.children;
+	const currentData: MittMenu = { children: [] };
+	let best: RouteItem | undefined;
+	let bestK = -1;
+	state.columnsAsideList.forEach((v: RouteItem, k: number) => {
+		if (path === v.path || path.startsWith(`${v.path}/`)) {
+			if (!best || v.path.length > best.path.length) {
+				best = v;
+				bestK = k;
+			}
 		}
 	});
+	if (!best) {
+		const routeFirst = `/${path.split('/').filter(Boolean)[0] || ''}`;
+		state.columnsAsideList.forEach((v: RouteItem, k: number) => {
+			if (v.path === routeFirst) {
+				best = v;
+				bestK = k;
+			}
+		});
+	}
+	if (best && bestK >= 0) {
+		best['k'] = bestK;
+		currentData.item = { ...best };
+		currentData.children = best.children?.length ? best.children : [{ ...best }];
+	}
 	return currentData;
 };
 // 路由过滤递归函数
@@ -180,6 +192,10 @@ const setColumnsMenuHighlight = (path: string) => {
 // 页面加载时
 onMounted(() => {
 	setFilterRoutes();
+	// aside 异步挂载晚于本组件时会主动索取；收到后立即再推一次，避免 500ms 竞态丢事件
+	mittBus.on('requestColumnsChildren', () => {
+		pushColumnsChildren(route.path);
+	});
 	// 销毁变量，防止鼠标再次移入时，保留了上次的记录
 	mittBus.on('restoreDefault', () => {
 		state.liOldIndex = null;
@@ -188,13 +204,13 @@ onMounted(() => {
 });
 // 页面卸载时
 onUnmounted(() => {
-	mittBus.off('restoreDefault', () => {});
+	mittBus.off('requestColumnsChildren');
+	mittBus.off('restoreDefault');
 });
 // 路由更新时
 onBeforeRouteUpdate((to) => {
-	const resData = setMenuAutoCollaps(to.path);
+	pushColumnsChildren(to.path);
 	setColumnsMenuHighlight(to.path);
-	mittBus.emit('setSendColumnsChildren', resData);
 });
 // 监听布局配置信息的变化，动态增加菜单高亮位置移动像素
 watch(

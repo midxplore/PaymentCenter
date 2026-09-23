@@ -118,6 +118,10 @@ onBeforeMount(() => {
 	mittBus.on('setSendColumnsChildren', (res: MittMenu) => {
 		state.menuList = res.children;
 	});
+	// 分栏：监听就绪后再向 columnsAside 索取二级菜单（columnsAside / aside 均为 async 组件，500ms 定时推送不可靠）
+	if (themeConfig.value.layout === 'columns') {
+		mittBus.emit('requestColumnsChildren');
+	}
 	// 开启经典布局分割菜单时，设置菜单数据
 	mittBus.on('setSendClassicChildren', (res: MittMenu) => {
 		let { layout, isClassicSplitMenu } = themeConfig.value;

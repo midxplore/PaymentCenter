@@ -11,6 +11,7 @@ namespace Admin.NET.Application;
 /// </summary>
 [SugarTable("pay_order", "收款订单表")]
 [SysTable]
+[IncreTable]
 [SugarIndex("u_{table}_no", nameof(OrderNo), OrderByType.Asc, IsUnique = true)]
 // ★ 幂等键是 (ClientId, ExternalNo) 组合，**不是** ExternalNo 单列。
 //   详见 ExternalNo 属性上的说明。
@@ -110,4 +111,11 @@ public class PayOrder : EntityBase
     /// </summary>
     [SugarColumn(ColumnDescription = "调用方Id", IsNullable = true)]
     public virtual long? ClientId { get; set; }
+
+    /// <summary>
+    /// 平台确认到账时上传的水单路径（根相对路径）
+    /// </summary>
+    [SugarColumn(ColumnDescription = "水单路径", Length = 512, IsNullable = true)]
+    [MaxLength(512)]
+    public virtual string VoucherUrl { get; set; }
 }

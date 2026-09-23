@@ -14,12 +14,10 @@
 	</div>
 </template>
 
-<script setup lang="ts" name="homePage">
+<script setup lang="ts" name="home">
 import { defineAsyncComponent, onMounted, reactive } from 'vue';
-// import { useHomepage } from 'src/stores/homepage';
 
 const widgets = defineAsyncComponent(() => import('./widgets/index.vue'));
-// const homepageStore = useHomepage();
 
 const state = reactive({
 	name: 'dashboard',

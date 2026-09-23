@@ -35,6 +35,7 @@
 
 <script lang="ts" setup>
 import { reactive } from 'vue';
+import { ensureAnimateCss } from '/@/utils/lazyFrameworkPlugins';
 
 const emits = defineEmits(['getAnimation']);
 const state = reactive({
@@ -87,6 +88,7 @@ const state = reactive({
 
 // 打开弹窗
 const openDialog = async (row: any) => {
+	await ensureAnimateCss();
 	if (row.value) {
 		state.animateLidt.forEach((itm, idx) => {
 			if (itm.value == row.value) return (state.idx = idx);

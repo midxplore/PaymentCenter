@@ -11,6 +11,7 @@ namespace Admin.NET.Core;
 /// </summary>
 [SugarTable(null, "开放接口身份表")]
 [SysTable]
+[IncreTable]
 [SugarIndex("i_{table}_a", nameof(AccessKey), OrderByType.Asc)]
 public partial class SysOpenAccess : EntityBase
 {
@@ -96,4 +97,11 @@ public partial class SysOpenAccess : EntityBase
     //[System.Text.Json.Serialization.JsonIgnore]
     [Navigate(NavigateType.OneToOne, nameof(BindUserId))]
     public SysUser BindUser { get; set; }
+
+    /// <summary>
+    /// 商户 Webhook 回调地址（可空；为空则不派发订单终态通知）
+    /// </summary>
+    [SugarColumn(ColumnDescription = "Webhook地址", Length = 512, IsNullable = true)]
+    [MaxLength(512)]
+    public virtual string WebhookUrl { get; set; }
 }

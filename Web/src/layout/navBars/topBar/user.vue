@@ -287,10 +287,13 @@ onMounted(async () => {
 			Push.clear();
 		}
 	});
-	// 加载未读的站内信
-	var res = await getAPI(SysNoticeApi).apiSysNoticeUnReadListGet();
-	state.noticeList = res.data.result ?? [];
-
+	// 加载未读的站内信（无权限时忽略，避免商户角色一登录就弹 403）
+	try {
+		var res = await getAPI(SysNoticeApi).apiSysNoticeUnReadListGet();
+		state.noticeList = res.data.result ?? [];
+	} catch {
+		state.noticeList = [];
+	}
 	// 接收站内信
 	signalR.on('PublicNotice', receiveNotice);
 

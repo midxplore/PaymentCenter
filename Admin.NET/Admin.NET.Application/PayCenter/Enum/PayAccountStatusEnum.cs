@@ -28,5 +28,11 @@ public enum PayAccountStatusEnum
     /// 已用完（剩余可用额度为 0，系统自动置位；追加额度后自动回置为启用）
     /// </summary>
     [Description("已用完")]
-    Exhausted = 3
+    Exhausted = 3,
+
+    /// <summary>
+    /// 占用中（已分配订单，须管理员改回启用后才能再次匹配；过期/确认到账均不自动释放）
+    /// </summary>
+    [Description("占用中")]
+    InUse = 4
 }

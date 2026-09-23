@@ -15,6 +15,7 @@ namespace Admin.NET.Application;
 /// </remarks>
 [SugarTable("pay_account", "收款账号表")]
 [SysTable]
+[IncreTable]
 [SugarIndex("i_{table}_tsc", nameof(Type), OrderByType.Asc, nameof(Status), OrderByType.Asc, nameof(CreateTime), OrderByType.Asc)]
 public class PayAccount : EntityBase
 {
@@ -58,7 +59,7 @@ public class PayAccount : EntityBase
     public virtual decimal LockedQuota { get; set; }
 
     /// <summary>
-    /// 状态：启用 / 停用 / 已用完
+    /// 状态：启用 / 停用 / 已用完 / 占用中
     /// </summary>
     [SugarColumn(ColumnDescription = "状态")]
     public virtual PayAccountStatusEnum Status { get; set; } = PayAccountStatusEnum.Enabled;
@@ -69,4 +70,16 @@ public class PayAccount : EntityBase
     [SugarColumn(ColumnDescription = "备注", Length = 256, IsNullable = true)]
     [MaxLength(256)]
     public virtual string Remark { get; set; }
+
+    /// <summary>
+    /// 最近一次收款成功（订单 Completed）时间；从未成功则为空
+    /// </summary>
+    [SugarColumn(ColumnDescription = "最近收款成功时间", IsNullable = true)]
+    public virtual DateTime? LastSuccessTime { get; set; }
+
+    /// <summary>
+    /// 空过期次数：关联订单 Expired 且到账为 0 的累计次数（匹配时降级）
+    /// </summary>
+    [SugarColumn(ColumnDescription = "空过期次数")]
+    public virtual int EmptyExpireCount { get; set; }
 }

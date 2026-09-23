@@ -99,5 +99,11 @@ public enum PayAuditActionEnum
     /// </para>
     /// </remarks>
     [Description("开放接口认证失败")]
-    ApiAuthFailure = 9
+    ApiAuthFailure = 9,
+
+    /// <summary>
+    /// 平台人工确认到账（水单 + 结清）
+    /// </summary>
+    [Description("确认到账")]
+    ConfirmReceived = 10
 }

@@ -1,4 +1,4 @@
-﻿// Admin.NET 项目的版权、商标、专利和其他相关权利均受相应法律法规的保护。使用本项目应遵守相关法律法规和许可证的要求。
+// Admin.NET 项目的版权、商标、专利和其他相关权利均受相应法律法规的保护。使用本项目应遵守相关法律法规和许可证的要求。
 //
 // 本项目主要遵循 MIT 许可证和 Apache 许可证（版本 2.0）进行分发和使用。许可证位于源代码树根目录中的 LICENSE-MIT 和 LICENSE-APACHE 文件。
 //
@@ -121,10 +121,16 @@ public class UpdateOpenAccessInput
     public string AccessSecret { get; set; }
 
     /// <summary>
-    /// 权限范围（逗号分隔，如 allocate,notify；留空表示不限制）
+    /// 权限范围（逗号分隔，如 allocate；留空表示不限制）
     /// </summary>
     [MaxLength(128)]
     public string Scopes { get; set; }
+
+    /// <summary>
+    /// 商户 Webhook 回调地址（可空；留空表示清除）
+    /// </summary>
+    [MaxLength(512)]
+    public string WebhookUrl { get; set; }
 
     /// <summary>
     /// 绑定租户Id
@@ -198,4 +204,16 @@ public class GenerateSignatureInput
     /// </summary>
     [Required(ErrorMessage = "随机数不能为空")]
     public string Nonce { get; set; }
+
+    /// <summary>
+    /// 请求正文原文（与线上实际发送的字节一致；UTF-8）。
+    /// 空/省略 = 无正文，按空字节序列计算 BODY_SHA256。
+    /// </summary>
+    public string Body { get; set; }
+
+    /// <summary>
+    /// 已算好的正文 SHA-256（小写 hex，64 字符）。
+    /// 与 <see cref="Body"/> 同时有时以 Body 为准。
+    /// </summary>
+    public string BodySha256Hex { get; set; }
 }
