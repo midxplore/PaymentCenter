@@ -63,7 +63,7 @@
 					<el-tooltip content="编辑" placement="top">
 						<el-button icon="ele-Edit" size="small" text type="primary" @click="handleEdit(row)" v-auth="'payAccount/update'" />
 					</el-tooltip>
-					<el-tooltip content="追加额度" placement="top">
+					<el-tooltip content="额度调整" placement="top">
 						<el-button icon="ele-Coin" size="small" text type="warning" @click="handleAddQuota(row)" v-auth="'payAccount/addQuota'" />
 					</el-tooltip>
 					<el-tooltip :content="statusActionLabel(row.status)" placement="top">
@@ -146,6 +146,8 @@ const options = useVxeTable<PayAccountOutput>(
 			{ field: 'usedQuota', title: '已用额度', minWidth: 110, align: 'right', formatter: ({ cellValue }) => money(cellValue) },
 			{ field: 'lockedQuota', title: '预占额度', minWidth: 110, align: 'right', formatter: ({ cellValue }) => money(cellValue) },
 			{ field: 'remainingQuota', title: '剩余可用', minWidth: 110, align: 'right', slots: { default: 'row_remainingQuota' } },
+			{ field: 'accountTierText', title: '账号类型', minWidth: 100, showOverflow: 'tooltip' },
+			{ field: 'minAmount', title: '最小金额', minWidth: 110, align: 'right', formatter: ({ cellValue }) => (Number(cellValue) > 0 ? money(cellValue) : '-') },
 			{ field: 'status', title: '状态', minWidth: 90, slots: { default: 'row_status' } },
 			{ field: 'remark', title: '备注', minWidth: 140, showOverflow: 'tooltip' },
 			{ field: 'createUserName', title: '创建人', minWidth: 100, showOverflow: 'tooltip' },
@@ -229,7 +231,7 @@ const handleEdit = (row: any) => {
 	editRef.value?.openDialog(row);
 };
 
-// 追加额度
+// 额度调整
 const handleAddQuota = (row: any) => {
 	quotaRef.value?.openDialog(row);
 };
@@ -257,12 +259,15 @@ const handleSetStatus = (row: any) => {
 		.catch(() => {});
 };
 
-// 删除
+// 删除（二次确认，防误操作）
 const handleDelete = (row: any) => {
-	ElMessageBox.confirm(`确定删除收款账号：【${accountLabel(row)}】?`, '提示', {
-		confirmButtonText: '确定',
+	const name = accountLabel(row);
+	ElMessageBox.confirm(`确定删除收款账号【${name}】？删除后不可恢复。`, '删除确认', {
+		confirmButtonText: '确认删除',
 		cancelButtonText: '取消',
-		type: 'warning',
+		type: 'error',
+		confirmButtonClass: 'el-button--danger',
+		distinguishCancelAndClose: true,
 	})
 		.then(async () => {
 			await getAPI(PayAccountApi).apiPayAccountDeletePost({ id: row.id });

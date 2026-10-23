@@ -102,7 +102,7 @@ export const useThemeConfig = defineStore('themeConfig', {
 			// 是否开启水印
 			isWatermark: true,
 			// 水印文案
-			watermarkText: '马上付',
+			watermarkText: 'PulsePay',
 
 			/**
 			 * 其它设置
@@ -135,13 +135,13 @@ export const useThemeConfig = defineStore('themeConfig', {
 			 * 全局网站标题 / 副标题
 			 */
 			// 网站主标题（菜单导航、浏览器当前网页标题）
-			globalTitle: '马上付',
+			globalTitle: 'PulsePay',
 			// 网站副标题（登录页顶部文字）
-			globalViceTitle: '马上付',
+			globalViceTitle: 'PulsePay',
 			// 网站副标题（登录页顶部文字）
 			globalViceTitleMsg: '收款账号分配平台',
 			// 版权和备案文字
-			copyright: 'Copyright © 2026 马上付 All rights reserved.',
+			copyright: 'Copyright © 2026 PulsePay All rights reserved.',
 			// 默认初始语言，可选值"<zh-CN|en|zh-TW>"，默认 zh-CN
 			globalI18n: 'zh-CN',
 			// 默认全局组件大小，可选值"<large|'default'|small>"，默认 'large'

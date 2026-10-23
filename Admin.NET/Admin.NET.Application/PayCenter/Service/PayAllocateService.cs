@@ -35,6 +35,7 @@ public class PayAllocateService : ITransient
     private readonly SqlSugarRepository<PayOrder> _payOrderRep;
     private readonly SqlSugarRepository<PayOrderEvent> _payOrderEventRep;
     private readonly PayAccountService _payAccountService;
+    private readonly PayCashierService _payCashierService;
     private readonly PayOrderNoGenerator _payOrderNoGenerator;
     private readonly PayAuditService _payAuditService;
     private readonly SysConfigService _sysConfigService;
@@ -45,6 +46,7 @@ public class PayAllocateService : ITransient
         SqlSugarRepository<PayOrder> payOrderRep,
         SqlSugarRepository<PayOrderEvent> payOrderEventRep,
         PayAccountService payAccountService,
+        PayCashierService payCashierService,
         PayOrderNoGenerator payOrderNoGenerator,
         PayAuditService payAuditService,
         SysConfigService sysConfigService,
@@ -55,6 +57,7 @@ public class PayAllocateService : ITransient
         _payOrderRep = payOrderRep;
         _payOrderEventRep = payOrderEventRep;
         _payAccountService = payAccountService;
+        _payCashierService = payCashierService;
         _payOrderNoGenerator = payOrderNoGenerator;
         _payAuditService = payAuditService;
         _sysConfigService = sysConfigService;
@@ -91,10 +94,13 @@ public class PayAllocateService : ITransient
         if (string.IsNullOrWhiteSpace(input.ExternalNo))
             throw Oops.Bah("商家订单号不能为空");
         var externalNo = input.ExternalNo.Trim();
+        var returnUrl = PayReturnTarget.NormalizeUrl(input.ReturnUrl);
+        var returnLabel = PayReturnTarget.NormalizeLabel(input.ReturnLabel);
         var clientId = await ResolveRequiredClientIdAsync();
 
         // ── 步骤 1：幂等前置检查（F2.6）────────────────────────────────
         // ★ 幂等键是 (ClientId, ExternalNo) 组合，**必须带 ClientId**。
+        //   returnUrl / returnLabel 以首次落库为准，重复请求不覆盖。
         {
             var existing = await FindByIdempotencyKeyAsync(clientId, externalNo);
             if (existing != null)
@@ -118,7 +124,8 @@ public class PayAllocateService : ITransient
         PayOrder order;
         try
         {
-            order = await CreateOrderAsync(type, input.Amount, externalNo, lockedAccountId.Value, clientId);
+            order = await CreateOrderAsync(type, input.Amount, externalNo, lockedAccountId.Value, clientId,
+                returnUrl, returnLabel);
         }
         catch (Exception)
         {
@@ -138,7 +145,30 @@ public class PayAllocateService : ITransient
             throw;
         }
 
+        // 普通账号：锁与落单之间的并发窗口可能导致非过期单超限，落单后复核并回滚超额单
+        if (!await TryKeepNormalTierOrderAsync(lockedAccountId.Value, order.Id, input.Amount))
+            throw Oops.Oh(ErrorCodeEnum.API_ACCOUNT_UNAVAILABLE);
+
         return await BuildOutputAsync(order, type, false);
+    }
+
+    /// <summary>
+    /// 普通账号非过期单不得超过上限；超额则软删本单并释放预占。
+    /// </summary>
+    private async Task<bool> TryKeepNormalTierOrderAsync(long accountId, long orderId, decimal amount)
+    {
+        var account = await _payAccountRep.GetByIdAsync(accountId);
+        if (account == null) return false;
+        if (account.AccountTier == PayAccountTierEnum.Large) return true;
+
+        var n = await _payOrderRep.AsQueryable()
+            .CountAsync(u => u.AccountId == accountId
+                && u.Status != PayOrderStatusEnum.Expired);
+        if (n <= PayConst.NormalAccountMaxNonExpiredOrders) return true;
+
+        await _payOrderRep.DeleteByIdAsync(orderId);
+        await ReleaseQuotaAsync(accountId, amount);
+        return false;
     }
 
     /// <summary>
@@ -318,28 +348,55 @@ public class PayAllocateService : ITransient
         //      而额度其实还有，等于丢单。阻塞式 FOR UPDATE 让后续请求排队，
         //      等前一条语句提交后在外层 WHERE 上重新求值，结果才正确。
         //      等待时间有界：本方法在事务外执行，锁只持有这一条语句的执行时间。
+        // 不再置 InUse：只锁额度；普通账号非过期订单数 < 2；大额不限次数。
+        // MinAmount>0：请求金额须 ≥ 最小金额（硬门槛），且 ORDER BY MinAmount DESC 优先占高门槛码。
+        // Expired=4 不占名额。子查询与外层均再判次数，防并发超发。
         const string sql = @"
 UPDATE pay_account
    SET LockedQuota = LockedQuota + @amount,
-       Status      = @inUse,
+       Status      = CASE
+                       WHEN TotalQuota <= UsedQuota + LockedQuota + @amount THEN @exhausted
+                       ELSE @enabled
+                     END,
        UpdateTime  = @now
  WHERE Id = (
         SELECT Id
-          FROM pay_account
-         WHERE Type = @type
-           AND Status = @enabled
-           AND IsDelete = false
-           AND TotalQuota >= UsedQuota + LockedQuota + @amount
-         ORDER BY EmptyExpireCount ASC,
-                  LastSuccessTime DESC NULLS LAST,
-                  (TotalQuota - UsedQuota - LockedQuota) ASC,
-                  CreateTime ASC
+          FROM pay_account a
+         WHERE a.Type = @type
+           AND a.Status = @enabled
+           AND a.IsDelete = false
+           AND a.TotalQuota >= a.UsedQuota + a.LockedQuota + @amount
+           AND COALESCE(a.MinAmount, 0) <= @amount
+           AND (
+                 COALESCE(a.AccountTier, @tierNormal) = @tierLarge
+                 OR (
+                      SELECT COUNT(*) FROM pay_order o
+                       WHERE o.AccountId = a.Id
+                         AND o.IsDelete = false
+                         AND o.Status <> @expired
+                    ) < @normalMaxOrders
+               )
+         ORDER BY a.EmptyExpireCount ASC,
+                  a.LastSuccessTime DESC NULLS LAST,
+                  COALESCE(a.MinAmount, 0) DESC,
+                  (a.TotalQuota - a.UsedQuota - a.LockedQuota) ASC,
+                  a.CreateTime ASC
          LIMIT 1
            FOR UPDATE
        )
    AND Status = @enabled
    AND IsDelete = false
    AND TotalQuota >= UsedQuota + LockedQuota + @amount
+   AND COALESCE(MinAmount, 0) <= @amount
+   AND (
+         COALESCE(AccountTier, @tierNormal) = @tierLarge
+         OR (
+              SELECT COUNT(*) FROM pay_order o
+               WHERE o.AccountId = pay_account.Id
+                 AND o.IsDelete = false
+                 AND o.Status <> @expired
+            ) < @normalMaxOrders
+       )
 RETURNING Id;";
 
         var ids = await _db.Ado.SqlQueryAsync<long>(sql,
@@ -347,7 +404,11 @@ RETURNING Id;";
             new SugarParameter("@now", DateTime.Now),
             new SugarParameter("@type", type),
             new SugarParameter("@enabled", (int)PayAccountStatusEnum.Enabled),
-            new SugarParameter("@inUse", (int)PayAccountStatusEnum.InUse));
+            new SugarParameter("@exhausted", (int)PayAccountStatusEnum.Exhausted),
+            new SugarParameter("@expired", (int)PayOrderStatusEnum.Expired),
+            new SugarParameter("@tierNormal", (int)PayAccountTierEnum.Normal),
+            new SugarParameter("@tierLarge", (int)PayAccountTierEnum.Large),
+            new SugarParameter("@normalMaxOrders", PayConst.NormalAccountMaxNonExpiredOrders));
 
         return ids.Count > 0 ? ids[0] : null;
     }
@@ -361,20 +422,18 @@ RETURNING Id;";
     [NonAction]
     public async Task ReleaseQuotaAsync(long accountId, decimal amount)
     {
-        // 带下界守卫，避免任何异常路径把 LockedQuota 减成负数。
-        // ★ allocate 落单失败补偿：必须同时解除 InUse，否则账号永久占住、无法再匹配。
-        //   过期/确认到账路径不走本方法（它们故意保持 InUse，等管理员启用）。
+        // 带下界守卫；匹配不再依赖 InUse，释放时按剩余回写 Enabled/Exhausted（停用不改）。
         const string sql = @"
 UPDATE pay_account
    SET LockedQuota = LockedQuota - @amount,
        Status      = CASE
+                       WHEN Status = @disabled THEN @disabled
                        WHEN TotalQuota <= UsedQuota + LockedQuota - @amount THEN @exhausted
                        ELSE @enabled
                      END,
        UpdateTime  = @now
  WHERE Id = @id
-   AND LockedQuota >= @amount
-   AND Status = @inUse;";
+   AND LockedQuota >= @amount;";
 
         await _db.Ado.ExecuteCommandAsync(sql,
             new SugarParameter("@amount", amount),
@@ -382,7 +441,7 @@ UPDATE pay_account
             new SugarParameter("@now", DateTime.Now),
             new SugarParameter("@enabled", (int)PayAccountStatusEnum.Enabled),
             new SugarParameter("@exhausted", (int)PayAccountStatusEnum.Exhausted),
-            new SugarParameter("@inUse", (int)PayAccountStatusEnum.InUse));
+            new SugarParameter("@disabled", (int)PayAccountStatusEnum.Disabled));
     }
 
     /// <summary>
@@ -393,9 +452,12 @@ UPDATE pay_account
     /// <param name="externalNo">外部业务单号（可为空）</param>
     /// <param name="accountId">已锁定额度的账号Id</param>
     /// <param name="clientId">调用方Id（幂等键与审计用）</param>
+    /// <param name="returnUrl">收银台返回地址（可空）</param>
+    /// <param name="returnLabel">返回按钮文案（可空）</param>
     /// <returns></returns>
     [NonAction]
-    public async Task<PayOrder> CreateOrderAsync(string type, decimal amount, string externalNo, long accountId, long? clientId)
+    public async Task<PayOrder> CreateOrderAsync(string type, decimal amount, string externalNo, long accountId,
+        long? clientId, string returnUrl = null, string returnLabel = null)
     {
         var expireMinutes = await _sysConfigService.GetConfigValueByCode<int>(PayConst.OrderExpireMinutes);
         if (expireMinutes <= 0) expireMinutes = PayConst.DefaultOrderExpireMinutes;
@@ -414,7 +476,10 @@ UPDATE pay_account
             ReceivedAmount = 0m,
             Status = PayOrderStatusEnum.Pending,
             ExpireTime = now.AddMinutes(expireMinutes),
-            ClientId = clientId
+            ClientId = clientId,
+            CashierToken = PayCashierService.NewCashierToken(),
+            ReturnUrl = returnUrl,
+            ReturnLabel = returnLabel
         };
 
         var tenant = _db.AsTenant();
@@ -510,25 +575,22 @@ UPDATE pay_account
         => Task.FromResult(PayCallerContext.RequireClientId(_httpContextAccessor.HttpContext));
 
     /// <summary>
-    /// 组装对外返回（含账号明文，见设计决策 #1：不脱敏）
+    /// 组装对外返回：仅订单号 + 收银台链接（收款要素只在收银台页展示）
     /// </summary>
     /// <param name="order">订单</param>
-    /// <param name="type">请求的收款类型（账号已被删除时兜底）</param>
+    /// <param name="type">请求的收款类型（保留参数以兼容调用方）</param>
     /// <param name="idempotentHit">是否命中幂等键</param>
     /// <returns></returns>
     [NonAction]
     public async Task<AllocateOutput> BuildOutputAsync(PayOrder order, string type, bool idempotentHit)
     {
-        var account = await _payAccountRep.GetByIdAsync(order.AccountId);
+        _ = type;
+        _ = idempotentHit;
+        await _payCashierService.EnsureCashierTokenAsync(order);
         return new AllocateOutput
         {
             OrderNo = order.OrderNo,
-            Type = account?.Type ?? type,
-            AccountInfo = account?.AccountInfo ?? "",
-            QrImageUrl = string.IsNullOrEmpty(account?.QrImageUrl) ? "" : account.QrImageUrl,
-            RequestAmount = order.RequestAmount,
-            ExpireTime = order.ExpireTime,
-            IdempotentHit = idempotentHit
+            CashierUrl = _payCashierService.BuildCashierUrl(order.CashierToken)
         };
     }
 }

@@ -197,11 +197,30 @@ public class SysConfigService : IDynamicApiController, ITransient
     [NonAction]
     public async Task UpdateConfigValue(string code, string value)
     {
-        var config = await _sysConfigRep.GetFirstAsync(u => u.Code == code);
-        if (config == null) return;
+        if (string.IsNullOrWhiteSpace(code)) return;
 
-        config.Value = value;
-        await _sysConfigRep.AsUpdateable(config).ExecuteCommandAsync();
+        var config = await _sysConfigRep.GetFirstAsync(u => u.Code == code);
+        if (config == null)
+        {
+            // 种子未跑到时仍允许写入（如到账提示音），避免「上传成功但关窗后丢失」
+            config = new SysConfig
+            {
+                Id = YitIdHelper.NextId(),
+                Name = code,
+                Code = code,
+                Value = value ?? "",
+                SysFlag = YesNoEnum.Y,
+                GroupCode = ConfigConst.SysDefaultGroup,
+                OrderNo = 100,
+                Remark = ""
+            };
+            await _sysConfigRep.InsertAsync(config);
+        }
+        else
+        {
+            config.Value = value ?? "";
+            await _sysConfigRep.AsUpdateable(config).ExecuteCommandAsync();
+        }
 
         RemoveConfigCache(config);
     }

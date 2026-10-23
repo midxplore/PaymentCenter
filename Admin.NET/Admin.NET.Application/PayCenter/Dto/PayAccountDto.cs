@@ -35,13 +35,37 @@ public class AddPayAccountInput
     public string Type { get; set; }
 
     /// <summary>
-    /// 账号信息（卡号 / 账号 / 收款码文本）。与 <see cref="QrImageUrl"/> 至少填一个。
+    /// 卖家姓名
+    /// </summary>
+    [MaxLength(PayConst.PayeeNameLength, ErrorMessage = "卖家姓名过长")]
+    public string PayeeName { get; set; }
+
+    /// <summary>
+    /// 收款账号号（卡号 / 支付宝号等）
+    /// </summary>
+    [MaxLength(PayConst.AccountNoLength, ErrorMessage = "收款账号过长")]
+    public string AccountNo { get; set; }
+
+    /// <summary>
+    /// 开户银行（银行卡必填）
+    /// </summary>
+    [MaxLength(PayConst.BankNameLength, ErrorMessage = "开户银行过长")]
+    public string BankName { get; set; }
+
+    /// <summary>
+    /// 支行（银行卡必填）
+    /// </summary>
+    [MaxLength(PayConst.BankNameLength, ErrorMessage = "支行过长")]
+    public string BranchName { get; set; }
+
+    /// <summary>
+    /// 账号信息（兼容旧字段；未填 AccountNo 时回落本列）
     /// </summary>
     [MaxLength(512, ErrorMessage = "账号信息长度不能超过512")]
     public string AccountInfo { get; set; }
 
     /// <summary>
-    /// 收款码图片路径（由上传接口返回）。与 <see cref="AccountInfo"/> 至少填一个。
+    /// 收款码图片路径（由上传接口返回）
     /// </summary>
     [MaxLength(512, ErrorMessage = "收款码图片地址长度不能超过512")]
     public string QrImageUrl { get; set; }
@@ -53,19 +77,54 @@ public class AddPayAccountInput
     public decimal TotalQuota { get; set; }
 
     /// <summary>
+    /// 账号分层（默认普通）
+    /// </summary>
+    public PayAccountTierEnum AccountTier { get; set; } = PayAccountTierEnum.Normal;
+
+    /// <summary>
+    /// 匹配最小金额（0=不限制）
+    /// </summary>
+    [Range(typeof(decimal), "0", "79228162514264337593543950335", ErrorMessage = "最小金额不能为负")]
+    public decimal MinAmount { get; set; }
+
+    /// <summary>
     /// 备注
     /// </summary>
-    [MaxLength(256, ErrorMessage = "备注长度不能超过256")]
+    [MaxLength(PayConst.AccountRemarkLength, ErrorMessage = "备注过长")]
     public string Remark { get; set; }
 }
 
 /// <summary>
-/// 编辑收款账号（账号文本、收款码图片、备注、状态）
+/// 编辑收款账号（结构化字段、收款码、备注、状态）
 /// </summary>
 public class UpdatePayAccountInput : BaseIdInput
 {
     /// <summary>
-    /// 账号信息。null 不修改，空字符串清除；与 <see cref="QrImageUrl"/> 至少填一个。
+    /// 卖家姓名
+    /// </summary>
+    [MaxLength(PayConst.PayeeNameLength, ErrorMessage = "卖家姓名过长")]
+    public string PayeeName { get; set; }
+
+    /// <summary>
+    /// 收款账号号
+    /// </summary>
+    [MaxLength(PayConst.AccountNoLength, ErrorMessage = "收款账号过长")]
+    public string AccountNo { get; set; }
+
+    /// <summary>
+    /// 开户银行
+    /// </summary>
+    [MaxLength(PayConst.BankNameLength, ErrorMessage = "开户银行过长")]
+    public string BankName { get; set; }
+
+    /// <summary>
+    /// 支行
+    /// </summary>
+    [MaxLength(PayConst.BankNameLength, ErrorMessage = "支行过长")]
+    public string BranchName { get; set; }
+
+    /// <summary>
+    /// 账号信息。null 不修改；与 AccountNo 同步时写入。
     /// </summary>
     [MaxLength(512, ErrorMessage = "账号信息长度不能超过512")]
     public string AccountInfo { get; set; }
@@ -77,27 +136,47 @@ public class UpdatePayAccountInput : BaseIdInput
     public string QrImageUrl { get; set; }
 
     /// <summary>
-    /// 备注
+    /// 备注（收银台 Notice，可含受限 HTML）
     /// </summary>
-    [MaxLength(256, ErrorMessage = "备注长度不能超过256")]
+    [MaxLength(PayConst.AccountRemarkLength, ErrorMessage = "备注过长")]
     public string Remark { get; set; }
 
     /// <summary>
     /// 状态（仅允许 启用 / 停用）
     /// </summary>
     public PayAccountStatusEnum Status { get; set; } = PayAccountStatusEnum.Enabled;
+
+    /// <summary>
+    /// 账号分层
+    /// </summary>
+    public PayAccountTierEnum? AccountTier { get; set; }
+
+    /// <summary>
+    /// 匹配最小金额（0=不限制；null 不修改）
+    /// </summary>
+    [Range(typeof(decimal), "0", "79228162514264337593543950335", ErrorMessage = "最小金额不能为负")]
+    public decimal? MinAmount { get; set; }
 }
 
 /// <summary>
-/// 追加额度输入（F1.2）
+/// 调整总额度输入（增加 / 减少）
 /// </summary>
 public class AddQuotaInput : BaseIdInput
 {
     /// <summary>
-    /// 本次追加的额度
+    /// 调整金额（绝对值，须 &gt; 0）
     /// </summary>
-    [Range(typeof(decimal), "0.01", "79228162514264337593543950335", ErrorMessage = "追加额度必须大于0")]
+    [Range(typeof(decimal), "0.01", "79228162514264337593543950335", ErrorMessage = "调整金额必须大于0")]
     public decimal Quota { get; set; }
+
+    /// <summary>
+    /// true=增加总额度；false=减少总额度
+    /// </summary>
+    /// <remarks>
+    /// 减少时：存在预占（LockedQuota&gt;0）或历史占用中状态则拒绝；
+    /// 调减后总额度不得低于已用额度，也不得低于匹配最小金额。
+    /// </remarks>
+    public bool Increase { get; set; } = true;
 }
 
 /// <summary>
@@ -116,73 +195,51 @@ public class SetPayAccountStatusInput : BaseIdInput
 /// </summary>
 public class PayAccountOutput
 {
-    /// <summary>
-    /// 主键Id
-    /// </summary>
     public long Id { get; set; }
 
-    /// <summary>
-    /// 收款类型标签
-    /// </summary>
     public string Type { get; set; }
 
+    public string PayeeName { get; set; }
+
+    public string AccountNo { get; set; }
+
+    public string BankName { get; set; }
+
+    public string BranchName { get; set; }
+
     /// <summary>
-    /// 账号信息（前后台均不脱敏，见设计决策）
+    /// 账号信息（兼容旧数据；前后台均不脱敏）
     /// </summary>
     public string AccountInfo { get; set; }
 
-    /// <summary>
-    /// 收款码图片的根相对路径。无图时为空字符串。
-    /// </summary>
     public string QrImageUrl { get; set; }
 
-    /// <summary>
-    /// 总额度
-    /// </summary>
     public decimal TotalQuota { get; set; }
 
-    /// <summary>
-    /// 已用额度
-    /// </summary>
     public decimal UsedQuota { get; set; }
 
-    /// <summary>
-    /// 锁定中额度
-    /// </summary>
     public decimal LockedQuota { get; set; }
 
-    /// <summary>
-    /// 剩余可用额度（计算得出）
-    /// </summary>
     public decimal RemainingQuota { get; set; }
 
-    /// <summary>
-    /// 状态
-    /// </summary>
     public PayAccountStatusEnum Status { get; set; }
 
-    /// <summary>
-    /// 状态名称
-    /// </summary>
     public string StatusText { get; set; }
 
+    public PayAccountTierEnum AccountTier { get; set; }
+
+    public string AccountTierText { get; set; }
+
     /// <summary>
-    /// 备注
+    /// 匹配最小金额（0=不限制）
     /// </summary>
+    public decimal MinAmount { get; set; }
+
     public string Remark { get; set; }
 
-    /// <summary>
-    /// 创建时间
-    /// </summary>
     public DateTime CreateTime { get; set; }
 
-    /// <summary>
-    /// 更新时间
-    /// </summary>
     public DateTime? UpdateTime { get; set; }
 
-    /// <summary>
-    /// 创建者姓名
-    /// </summary>
     public string CreateUserName { get; set; }
 }

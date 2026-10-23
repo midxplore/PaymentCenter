@@ -41,6 +41,16 @@
       // ⚠️ 这只是**兜底**：真正的接入方级配额应在网关/WAF 按调用方维度配置，
       //    本文件按 IP 限流对 NAT 后的多接入方会误伤，仅作最后一道闸。
       {
+        "Endpoint": "*:/api/pay/cashier/*",
+        "Period": "1s",
+        "Limit": 20
+      },
+      {
+        "Endpoint": "*:/api/pay/cashier/*",
+        "Period": "1m",
+        "Limit": 120
+      },
+      {
         "Endpoint": "*:/api/pay/*",
         "Period": "1s",
         "Limit": 100

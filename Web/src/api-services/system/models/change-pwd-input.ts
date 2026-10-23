@@ -35,4 +35,12 @@ export interface ChangePwdInput {
      * @memberof ChangePwdInput
      */
     passwordNew: string;
+
+    /**
+     * Google Authenticator 6 位动态码
+     *
+     * @type {string}
+     * @memberof ChangePwdInput
+     */
+    totpCode: string;
 }

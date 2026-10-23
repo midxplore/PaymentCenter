@@ -78,6 +78,16 @@ public class PayConst
     public const int DefaultOrderExpireMinutes = 120;
 
     /// <summary>
+    /// 普通账号允许的非过期订单数上限（含完成单；过期单不占名额）
+    /// </summary>
+    public const int NormalAccountMaxNonExpiredOrders = 2;
+
+    /// <summary>
+    /// 到账提示音配置（空=不播放）；系统参数 Code，由订单页上传音频写入根相对路径
+    /// </summary>
+    public const string OrderAlertSoundUrl = "pay_order_alert_sound_url";
+
+    /// <summary>
     /// 过期扫描单批次处理条数
     /// </summary>
     /// <remarks>
@@ -132,6 +142,76 @@ public class PayConst
     /// 水单路径列宽（与 PayOrder.VoucherUrl / schema 联动）
     /// </summary>
     public const int VoucherUrlLength = 512;
+
+    /// <summary>
+    /// 收银台 token 列宽（URL-safe 高熵串）
+    /// </summary>
+    public const int CashierTokenLength = 43;
+
+    /// <summary>
+    /// 多凭证 JSON 列宽（最多 3 条路径）
+    /// </summary>
+    public const int VoucherUrlsLength = 2048;
+
+    /// <summary>
+    /// 收银台返回地址（第三方 returnUrl）列宽
+    /// </summary>
+    public const int ReturnUrlLength = 512;
+
+    /// <summary>
+    /// 收银台「返回」按钮文案列宽
+    /// </summary>
+    public const int ReturnLabelLength = 16;
+
+    /// <summary>
+    /// 收银台返回按钮默认文案
+    /// </summary>
+    public const string DefaultReturnLabel = "返回";
+
+    /// <summary>
+    /// 卖家姓名列宽
+    /// </summary>
+    public const int PayeeNameLength = 64;
+
+    /// <summary>
+    /// 收款账号号列宽
+    /// </summary>
+    public const int AccountNoLength = 128;
+
+    /// <summary>
+    /// 开户银行 / 支行列宽
+    /// </summary>
+    public const int BankNameLength = 128;
+
+    /// <summary>
+    /// 收款账号备注（收银台 Notice，可含受限 HTML）列宽
+    /// </summary>
+    public const int AccountRemarkLength = 2000;
+
+    /// <summary>
+    /// 收银台单笔凭证最大字节数（3MB）
+    /// </summary>
+    public const int CashierVoucherMaxBytes = 3 * 1024 * 1024;
+
+    /// <summary>
+    /// 收银台单笔订单最多凭证张数
+    /// </summary>
+    public const int CashierVoucherMaxCount = 3;
+
+    /// <summary>
+    /// 收款码上传最大字节数（5MB；前端会先压，后端再限边转 JPEG）
+    /// </summary>
+    public const int QrImageMaxBytes = 5 * 1024 * 1024;
+
+    /// <summary>
+    /// 收款码落库最长边（像素）；手机扫屏显足够，避免超大图拖慢收银台
+    /// </summary>
+    public const int QrImageMaxSide = 1200;
+
+    /// <summary>
+    /// 标准收款类型：银行卡
+    /// </summary>
+    public const string TypeBank = "bank";
 
     /// <summary>
     /// Webhook outbox 派发作业标识

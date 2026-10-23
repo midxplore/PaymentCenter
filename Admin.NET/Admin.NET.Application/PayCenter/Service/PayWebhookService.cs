@@ -53,22 +53,32 @@ public class PayWebhookService : ITransient
     }
 
     /// <summary>
-    /// 订单终态入队（无 WebhookUrl / 无 ClientId 则跳过；eventId 冲突视为已入队）
+    /// 订单终态入队（无 WebhookUrl / 无 ClientId 则跳过；eventId 冲突视为已入队）。
+    /// ★ 使用独立连接写入，避免调用方事务里 INSERT 失败后 PG 整段事务被标 aborted。
     /// </summary>
+    /// <param name="order">终态订单</param>
+    /// <param name="forceNew">true=人工重发，生成带时间戳的新 eventId（后配 URL / 派发失败后可再推）</param>
     [NonAction]
-    public async Task EnqueueOrderResultAsync(PayOrder order)
+    public async Task EnqueueOrderResultAsync(PayOrder order, bool forceNew = false)
     {
         if (order == null || order.ClientId is null or <= 0) return;
-        if (order.Status != PayOrderStatusEnum.Completed && order.Status != PayOrderStatusEnum.Expired) return;
+        if (order.Status != PayOrderStatusEnum.Completed
+            && order.Status != PayOrderStatusEnum.Expired
+            && order.Status != PayOrderStatusEnum.Failed) return;
 
-        var access = await _openAccessRep.GetByIdAsync(order.ClientId.Value);
+        // 独立连接读凭证 URL，不绑调用方事务
+        var accessRep = _openAccessRep.CopyNew();
+        var access = await accessRep.GetByIdAsync(order.ClientId.Value);
         var url = access?.WebhookUrl?.Trim();
         if (string.IsNullOrWhiteSpace(url)) return;
 
         var statusName = order.Status.ToString();
-        var eventId = $"order:{order.Id}:result:{statusName}";
+        var eventId = forceNew
+            ? $"order:{order.Id}:result:{statusName}:m{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}"
+            : $"order:{order.Id}:result:{statusName}";
 
-        if (await _outboxRep.AsQueryable().AnyAsync(u => u.EventId == eventId)) return;
+        var outboxRep = _outboxRep.CopyNew();
+        if (!forceNew && await outboxRep.AsQueryable().AnyAsync(u => u.EventId == eventId)) return;
 
         var payload = new
         {
@@ -85,7 +95,7 @@ public class PayWebhookService : ITransient
         var now = DateTime.Now;
         try
         {
-            await _outboxRep.InsertAsync(new PayWebhookOutbox
+            await outboxRep.InsertAsync(new PayWebhookOutbox
             {
                 EventId = eventId,
                 EventType = "OrderResult",
@@ -103,9 +113,26 @@ public class PayWebhookService : ITransient
         }
         catch (Exception ex)
         {
-            // 唯一索引冲突 = 并发入队成功；其它异常只记日志，不回滚业务主事务调用方
+            // 唯一索引冲突 = 并发入队成功；其它异常只记日志，绝不抛回业务主事务
             _logger.LogWarning(ex, "Webhook 入队失败 eventId={EventId} orderNo={OrderNo}", eventId, order.OrderNo);
         }
+    }
+
+    /// <summary>
+    /// 立即尝试派发指定订单最近一条 Pending 的 OrderResult（人工重发后可马上验证）
+    /// </summary>
+    [NonAction]
+    public async Task<bool> TryDispatchLatestPendingAsync(long orderId, CancellationToken cancellationToken = default)
+    {
+        var rows = await _outboxRep.AsQueryable()
+            .Where(u => u.OrderId == orderId
+                        && u.Status == PayWebhookStatusEnum.Pending
+                        && u.EventType == "OrderResult")
+            .OrderBy(u => u.Id, OrderByType.Desc)
+            .Take(1)
+            .ToListAsync(cancellationToken);
+        if (rows.Count == 0) return false;
+        return await TryDispatchOneAsync(rows[0], cancellationToken);
     }
 
     /// <summary>

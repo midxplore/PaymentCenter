@@ -28,11 +28,16 @@ public class PayOrderService : IDynamicApiController, ITransient
     private readonly SqlSugarRepository<PayOrder> _payOrderRep;
     private readonly SqlSugarRepository<PayOrderEvent> _payOrderEventRep;
     private readonly SqlSugarRepository<PayNotifyRecord> _payNotifyRecordRep;
+    private readonly SqlSugarRepository<PayWebhookOutbox> _payWebhookOutboxRep;
     private readonly SqlSugarRepository<PayAccount> _payAccountRep;
+    private readonly SqlSugarRepository<PayAuditLog> _payAuditLogRep;
     private readonly SqlSugarRepository<SysOpenAccess> _openAccessRep;
     private readonly PayNotifyService _payNotifyService;
     private readonly PayWebhookService _payWebhookService;
     private readonly PayAuditService _payAuditService;
+    private readonly PayAccountService _payAccountService;
+    private readonly PayCashierService _payCashierService;
+    private readonly SysConfigService _sysConfigService;
     private readonly SysFileService _sysFileService;
     private readonly UserManager _userManager;
     private readonly ISqlSugarClient _db;
@@ -40,11 +45,16 @@ public class PayOrderService : IDynamicApiController, ITransient
     public PayOrderService(SqlSugarRepository<PayOrder> payOrderRep,
         SqlSugarRepository<PayOrderEvent> payOrderEventRep,
         SqlSugarRepository<PayNotifyRecord> payNotifyRecordRep,
+        SqlSugarRepository<PayWebhookOutbox> payWebhookOutboxRep,
         SqlSugarRepository<PayAccount> payAccountRep,
+        SqlSugarRepository<PayAuditLog> payAuditLogRep,
         SqlSugarRepository<SysOpenAccess> openAccessRep,
         PayNotifyService payNotifyService,
         PayWebhookService payWebhookService,
         PayAuditService payAuditService,
+        PayAccountService payAccountService,
+        PayCashierService payCashierService,
+        SysConfigService sysConfigService,
         SysFileService sysFileService,
         UserManager userManager,
         ISqlSugarClient db)
@@ -52,11 +62,16 @@ public class PayOrderService : IDynamicApiController, ITransient
         _payOrderRep = payOrderRep;
         _payOrderEventRep = payOrderEventRep;
         _payNotifyRecordRep = payNotifyRecordRep;
+        _payWebhookOutboxRep = payWebhookOutboxRep;
         _payAccountRep = payAccountRep;
+        _payAuditLogRep = payAuditLogRep;
         _openAccessRep = openAccessRep;
         _payNotifyService = payNotifyService;
         _payWebhookService = payWebhookService;
         _payAuditService = payAuditService;
+        _payAccountService = payAccountService;
+        _payCashierService = payCashierService;
+        _sysConfigService = sysConfigService;
         _sysFileService = sysFileService;
         _userManager = userManager;
         _db = db;
@@ -93,6 +108,14 @@ public class PayOrderService : IDynamicApiController, ITransient
             : (await _payAccountRep.AsQueryable().Where(u => accountIds.Contains(u.Id)).ToListAsync())
                 .ToDictionary(u => u.Id);
 
+        var items = new List<PayOrderOutput>();
+        foreach (var u in paged.Items)
+        {
+            var output = ToOutput(u, accountMap.GetValueOrDefault(u.AccountId));
+            output.WebhookNotified = await HasSuccessfulWebhookForStatusAsync(u.Id, u.Status);
+            items.Add(output);
+        }
+
         return new SqlSugarPagedList<PayOrderOutput>
         {
             Page = paged.Page,
@@ -101,7 +124,7 @@ public class PayOrderService : IDynamicApiController, ITransient
             TotalPages = paged.TotalPages,
             HasNextPage = paged.HasNextPage,
             HasPrevPage = paged.HasPrevPage,
-            Items = paged.Items.Select(u => ToOutput(u, accountMap.GetValueOrDefault(u.AccountId))).ToList()
+            Items = items
         };
     }
 
@@ -123,16 +146,45 @@ public class PayOrderService : IDynamicApiController, ITransient
             .OrderBy(u => u.CreateTime, OrderByType.Asc)
             .ToListAsync();
 
+        var webhooks = await _payWebhookOutboxRep.AsQueryable()
+            .Where(u => u.OrderId == order.Id)
+            .OrderBy(u => u.CreateTime, OrderByType.Desc)
+            .ToListAsync();
+
         var notifies = await _payNotifyRecordRep.AsQueryable()
             .Where(u => u.OrderId == order.Id)
             .OrderBy(u => u.NotifyTime, OrderByType.Asc)
             .ToListAsync();
 
+        var orderOutput = ToOutput(order, account, includeCashierDebug: true);
+        orderOutput.WebhookNotified = await HasSuccessfulWebhookForStatusAsync(order.Id, order.Status);
+
+        var openApiCalls = await _payAuditLogRep.AsQueryable()
+            .Where(u => u.TargetType == PayConst.AuditTargetTypeOrder
+                && u.TargetId == order.Id
+                && (u.Action == PayAuditActionEnum.ApiCall
+                    || u.Action == PayAuditActionEnum.ApiAuthFailure))
+            .OrderBy(u => u.CreateTime, OrderByType.Desc)
+            .Take(50)
+            .ToListAsync();
+
         return new PayOrderDetailOutput
         {
-            Order = ToOutput(order, account),
+            Order = orderOutput,
             Events = events.Select(ToEventOutput).ToList(),
-            NotifyRecords = notifies.Select(ToNotifyOutput).ToList()
+            WebhookRecords = webhooks.Select(ToWebhookOutput).ToList(),
+            NotifyRecords = notifies.Select(ToNotifyOutput).ToList(),
+            OpenApiCalls = openApiCalls.Select(u => new PayOrderOpenApiCallOutput
+            {
+                Id = u.Id,
+                Action = u.Action,
+                ActionText = u.Action.GetDescription(),
+                ClientKey = u.ClientKey,
+                ClientId = u.ClientId,
+                OperatorIp = u.OperatorIp,
+                Remark = u.Remark,
+                CreateTime = u.CreateTime
+            }).ToList()
         };
     }
 
@@ -167,28 +219,59 @@ public class PayOrderService : IDynamicApiController, ITransient
     }
 
     /// <summary>
+    /// 获取到账提示音地址（空则未配置）
+    /// </summary>
+    [ApiDescriptionSettings(Name = "GetAlertSound"), HttpGet]
+    [DisplayName("查询到账提示音")]
+    public async Task<string> GetAlertSound()
+    {
+        var url = (await _sysConfigService.GetConfigValueByCode<string>(PayConst.OrderAlertSoundUrl))?.Trim() ?? "";
+        if (string.IsNullOrWhiteSpace(url)) return "";
+        return url.StartsWith("http", StringComparison.OrdinalIgnoreCase) || url.StartsWith('/')
+            ? url
+            : "/" + url.TrimStart('/');
+    }
+
+    /// <summary>
     /// 平台确认到账（须水单；按请求金额差额一次结清为 Completed）
     /// </summary>
+    /// <remarks>
+    /// 支持 Pending / Partial / AwaitingConfirm。收银台已交凭证时可用其首张水单。
+    /// 确认成功后入队并即时尝试 Webhook；派发失败不回滚到账（可再用「通知商户」重推）。
+    /// </remarks>
     [ApiDescriptionSettings(Name = "ConfirmReceived"), HttpPost]
     [DisplayName("确认到账")]
-    public async Task ConfirmReceived(ConfirmReceivedInput input)
+    public async Task<ConfirmReceivedOutput> ConfirmReceived(ConfirmReceivedInput input)
     {
         if (input == null || input.Id <= 0) throw Oops.Bah("订单不能为空");
-        if (string.IsNullOrWhiteSpace(input.VoucherUrl)) throw Oops.Bah("水单不能为空");
-
-        var voucherUrl = input.VoucherUrl.Trim();
-        if (voucherUrl.Length > PayConst.VoucherUrlLength)
-            throw Oops.Bah($"水单路径长度不能超过 {PayConst.VoucherUrlLength}");
 
         var tenant = _db.AsTenant();
         tenant.BeginTran();
+        PayOrder fresh;
         try
         {
             var order = await _payOrderRep.GetByIdAsync(input.Id)
                 ?? throw Oops.Oh(ErrorCodeEnum.API_ORDER_NOT_FOUND);
+            await EnsureOrderVisibleAsync(order);
 
-            if (order.Status != PayOrderStatusEnum.Pending && order.Status != PayOrderStatusEnum.Partial)
+            // 正常路径收银台已自动到账；此处保留给异常/补录/历史等待确认/已过期
+            if (order.Status != PayOrderStatusEnum.Pending
+                && order.Status != PayOrderStatusEnum.Partial
+                && order.Status != PayOrderStatusEnum.AwaitingConfirm
+                && order.Status != PayOrderStatusEnum.Failed
+                && order.Status != PayOrderStatusEnum.Expired)
                 throw Oops.Oh(ErrorCodeEnum.API_ORDER_STATUS_INVALID, order.Status.GetDescription());
+
+            // 水单：优先用本次上传；否则回落收银台已传凭证首张
+            var voucherUrl = (input.VoucherUrl ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(voucherUrl))
+            {
+                var urls = PayCashierService.ParseVoucherUrls(order.VoucherUrls);
+                voucherUrl = urls.Count > 0 ? urls[0] : (order.VoucherUrl ?? "");
+            }
+            if (string.IsNullOrWhiteSpace(voucherUrl)) throw Oops.Bah("水单不能为空");
+            if (voucherUrl.Length > PayConst.VoucherUrlLength)
+                throw Oops.Bah($"水单路径长度不能超过 {PayConst.VoucherUrlLength}");
 
             var gap = order.RequestAmount - order.ReceivedAmount;
             if (gap <= 0)
@@ -219,14 +302,12 @@ public class PayOrderService : IDynamicApiController, ITransient
                 .Where(u => u.Id == order.AccountId)
                 .ExecuteCommandAsync();
 
-            var fresh = await _payOrderRep.GetByIdAsync(order.Id);
+            fresh = await _payOrderRep.GetByIdAsync(order.Id);
             var remarkExtra = string.IsNullOrWhiteSpace(input.Remark) ? "" : $"；备注 {input.Remark.Trim()}";
             await _payAuditService.WriteAsync(PayAuditActionEnum.ConfirmReceived,
                 PayConst.AuditTargetTypeOrder, fresh.Id, fresh.OrderNo,
                 remark: $"确认到账 {gap:0.00}，水单 {voucherUrl}{remarkExtra}",
                 db: _db);
-
-            await _payWebhookService.EnqueueOrderResultAsync(fresh);
 
             tenant.CommitTran();
         }
@@ -235,6 +316,185 @@ public class PayOrderService : IDynamicApiController, ITransient
             tenant.RollbackTran();
             throw;
         }
+
+        // ★ 入队/派发放在提交之后：outbox 失败不得回滚已确认到账
+        var webhook = await NotifyMerchantAfterConfirmAsync(fresh);
+        return webhook;
+    }
+
+    /// <summary>
+    /// 运营确认未到账：订单置 Failed（额度仍预占，收银台可再传凭证），Webhook status=Failed
+    /// </summary>
+    [ApiDescriptionSettings(Name = "MarkUnpaid"), HttpPost]
+    [DisplayName("确认未到账")]
+    public async Task<ConfirmReceivedOutput> MarkUnpaid(MarkUnpaidInput input)
+    {
+        if (input == null || input.Id <= 0) throw Oops.Bah("订单不能为空");
+
+        var tenant = _db.AsTenant();
+        tenant.BeginTran();
+        PayOrder fresh;
+        try
+        {
+            var order = await _payOrderRep.GetByIdAsync(input.Id)
+                ?? throw Oops.Oh(ErrorCodeEnum.API_ORDER_NOT_FOUND);
+            await EnsureOrderVisibleAsync(order);
+
+            if (order.Status != PayOrderStatusEnum.Pending
+                && order.Status != PayOrderStatusEnum.Partial
+                && order.Status != PayOrderStatusEnum.AwaitingConfirm
+                && order.Status != PayOrderStatusEnum.Failed)
+                throw Oops.Oh(ErrorCodeEnum.API_ORDER_STATUS_INVALID, order.Status.GetDescription());
+
+            if (order.ReceivedAmount > 0m)
+                throw Oops.Bah("订单已有到账金额，请走确认到账或异常处理，不能标记未到账");
+
+            var now = DateTime.Now;
+            var fromStatus = order.Status;
+            var expireMinutes = await _sysConfigService.GetConfigValueByCode<int>(PayConst.OrderExpireMinutes);
+            if (expireMinutes <= 0) expireMinutes = PayConst.DefaultOrderExpireMinutes;
+            var newExpire = now.AddMinutes(expireMinutes);
+
+            var claimed = await _payOrderRep.AsUpdateable()
+                .SetColumns(u => new PayOrder
+                {
+                    Status = PayOrderStatusEnum.Failed,
+                    // 清空凭证，便于付款人按未到账结果重新上传
+                    VoucherUrls = null,
+                    VoucherUrl = null,
+                    CompleteTime = null,
+                    ExpireTime = newExpire,
+                    UpdateTime = now
+                })
+                .Where(u => u.Id == order.Id
+                    && (u.Status == PayOrderStatusEnum.Pending
+                        || u.Status == PayOrderStatusEnum.Partial
+                        || u.Status == PayOrderStatusEnum.AwaitingConfirm
+                        || u.Status == PayOrderStatusEnum.Failed)
+                    && u.ReceivedAmount == 0m)
+                .ExecuteCommandAsync();
+            if (claimed == 0)
+                throw Oops.Oh(ErrorCodeEnum.API_ORDER_STATUS_INVALID, "已被并发变更");
+
+            fresh = await _payOrderRep.GetByIdAsync(order.Id);
+            var remarkExtra = string.IsNullOrWhiteSpace(input.Remark) ? "" : $"；{input.Remark.Trim()}";
+            await _payOrderEventRep.InsertAsync(new PayOrderEvent
+            {
+                OrderId = fresh.Id,
+                OrderNo = fresh.OrderNo,
+                EventType = PayEventTypeEnum.MarkUnpaid,
+                FromStatus = fromStatus,
+                ToStatus = PayOrderStatusEnum.Failed,
+                Amount = 0m,
+                ReceivedTotal = 0m,
+                Remark = $"运营确认未到账，通知商户 Failed；额度继续预占，收银台可重新上传凭证{remarkExtra}",
+                OperatorId = _userManager.UserId,
+                OperatorName = _userManager.RealName
+            });
+
+            await _payAuditService.WriteAsync(PayAuditActionEnum.MarkUnpaid,
+                PayConst.AuditTargetTypeOrder, fresh.Id, fresh.OrderNo,
+                remark: $"确认未到账（Failed），可继续支付{remarkExtra}",
+                db: _db);
+
+            tenant.CommitTran();
+        }
+        catch
+        {
+            tenant.RollbackTran();
+            throw;
+        }
+
+        // Failed 通知用 forceNew：每次未到账都可再推一条，便于下游跟踪
+        return await NotifyMerchantOrderResultAsync(fresh, forceNew: true);
+    }
+
+    /// <summary>
+    /// 人工重发订单结果 Webhook（仅已完成 / 未到账）。
+    /// 已过期不可人工重推：额度已释放，过期仅在状态变更时自动入队一次。
+    /// 已成功通知过也可再推（forceNew 新 eventId），便于到账后重复确认异步回调。
+    /// </summary>
+    [ApiDescriptionSettings(Name = "ResendWebhook"), HttpPost]
+    [DisplayName("重发商户通知")]
+    public async Task ResendWebhook(BaseIdInput input)
+    {
+        if (input == null || input.Id <= 0) throw Oops.Bah("订单不能为空");
+
+        var order = await _payOrderRep.GetByIdAsync(input.Id)
+            ?? throw Oops.Oh(ErrorCodeEnum.API_ORDER_NOT_FOUND);
+        await EnsureOrderVisibleAsync(order);
+
+        if (order.Status == PayOrderStatusEnum.Expired)
+            throw Oops.Bah("已过期订单额度已释放，不再支持人工通知商户");
+
+        if (order.Status != PayOrderStatusEnum.Completed
+            && order.Status != PayOrderStatusEnum.Failed)
+            throw Oops.Bah("仅已完成 / 未到账的订单可通知商户");
+
+        if (order.ClientId is null or <= 0)
+            throw Oops.Bah("订单无关联开放凭证，无法通知");
+
+        var access = await _openAccessRep.GetByIdAsync(order.ClientId.Value);
+        var url = access?.WebhookUrl?.Trim();
+        if (string.IsNullOrWhiteSpace(url))
+            throw Oops.Bah("该凭证未配置 Webhook 地址，请先在开放接口凭证中填写");
+
+        var alreadyOk = await HasSuccessfulWebhookForStatusAsync(order.Id, order.Status);
+        await _payWebhookService.EnqueueOrderResultAsync(order, forceNew: true);
+        var ok = await _payWebhookService.TryDispatchLatestPendingAsync(order.Id);
+
+        await _payAuditService.WriteAsync(PayAuditActionEnum.ResendWebhook,
+            PayConst.AuditTargetTypeOrder, order.Id, order.OrderNo,
+            remark: ok
+                ? $"人工{(alreadyOk ? "再次" : "重发")} Webhook 成功（{order.Status}）→ {url}"
+                : $"人工{(alreadyOk ? "再次" : "重发")} Webhook 已入队（{order.Status}，即时派发未成功，将按退避重试）→ {url}");
+
+        if (!ok)
+            throw Oops.Bah("已入队通知，但即时派发未成功（对方未返回 success）。系统将自动重试，也可稍后再点「再次通知」");
+    }
+
+    /// <summary>确认到账后的 Webhook：无地址则跳过；有则入队并即时尝试一次。</summary>
+    private Task<ConfirmReceivedOutput> NotifyMerchantAfterConfirmAsync(PayOrder order)
+        => NotifyMerchantOrderResultAsync(order, forceNew: false);
+
+    /// <summary>终态/未到账结果通知商户。</summary>
+    private async Task<ConfirmReceivedOutput> NotifyMerchantOrderResultAsync(PayOrder order, bool forceNew)
+    {
+        var output = new ConfirmReceivedOutput
+        {
+            OrderNo = order.OrderNo,
+            Status = order.Status.ToString(),
+            WebhookQueued = false,
+            WebhookDispatched = false,
+            WebhookMessage = "未关联开放凭证，跳过商户通知"
+        };
+
+        if (order.ClientId is null or <= 0) return output;
+
+        var access = await _openAccessRep.GetByIdAsync(order.ClientId.Value);
+        var url = access?.WebhookUrl?.Trim();
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            output.WebhookMessage = "凭证未配置 Webhook 地址；配置后可在订单上点「重试通知」补推";
+            return output;
+        }
+
+        await _payWebhookService.EnqueueOrderResultAsync(order, forceNew);
+        output.WebhookQueued = true;
+        output.WebhookDispatched = await _payWebhookService.TryDispatchLatestPendingAsync(order.Id);
+        output.WebhookMessage = output.WebhookDispatched
+            ? $"已通知商户（{order.Status}，对方返回 success）"
+            : "已入队通知，但即时派发未成功；可稍后点「重试通知」重推，或等待系统自动重试";
+        return output;
+    }
+
+    private async Task<bool> HasSuccessfulWebhookForStatusAsync(long orderId, PayOrderStatusEnum status)
+    {
+        var prefix = $"order:{orderId}:result:{status}";
+        return await _payWebhookOutboxRep.AsQueryable()
+            .AnyAsync(u => u.OrderId == orderId
+                && u.Status == PayWebhookStatusEnum.Success
+                && (u.EventId == prefix || u.EventId.StartsWith(prefix + ":")));
     }
 
     /// <summary>
@@ -282,7 +542,7 @@ public class PayOrderService : IDynamicApiController, ITransient
         Items = []
     };
 
-    private static PayOrderOutput ToOutput(PayOrder order, PayAccount account)
+    private PayOrderOutput ToOutput(PayOrder order, PayAccount account, bool includeCashierDebug = false)
     {
         var output = new PayOrderOutput
         {
@@ -301,8 +561,23 @@ public class PayOrderService : IDynamicApiController, ITransient
             CompleteTime = order.CompleteTime,
             OverpayRemark = order.OverpayRemark,
             VoucherUrl = order.VoucherUrl,
-            CreateTime = order.CreateTime
+            VoucherUrls = PayCashierService.ParseVoucherUrls(order.VoucherUrls),
+            CreateTime = order.CreateTime,
+            ReturnUrl = order.ReturnUrl,
+            ReturnLabel = order.ReturnLabel
         };
+        if (includeCashierDebug && !string.IsNullOrWhiteSpace(order.CashierToken))
+        {
+            try
+            {
+                output.CashierUrl = _payCashierService.BuildCashierUrl(order.CashierToken);
+            }
+            catch
+            {
+                // 未配置公网基址时详情仍可看其它字段
+                output.CashierUrl = "";
+            }
+        }
         FillComputed(output);
         return output;
     }
@@ -340,6 +615,21 @@ public class PayOrderService : IDynamicApiController, ITransient
         Applied = n.Applied,
         RawBody = n.RawBody,
         CreateTime = n.CreateTime
+    };
+
+    private static PayWebhookOutboxOutput ToWebhookOutput(PayWebhookOutbox w) => new()
+    {
+        Id = w.Id,
+        EventId = w.EventId,
+        EventType = w.EventType,
+        WebhookUrl = w.WebhookUrl,
+        Status = w.Status,
+        StatusText = w.Status.GetDescription(),
+        AttemptCount = w.AttemptCount,
+        NextRetryTime = w.NextRetryTime,
+        LastError = w.LastError,
+        Payload = w.Payload,
+        CreateTime = w.CreateTime
     };
 }
 

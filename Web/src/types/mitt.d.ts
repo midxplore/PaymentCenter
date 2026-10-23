@@ -27,6 +27,8 @@ declare type MittType<T = any> = {
 	onTagsViewRefreshRouterView?: T;
 	onCurrentContextmenuClick?: T;
 	submitRefreshFk?: T;
+	/** 收银台到账提醒：顶栏通知订单页刷新并定位 */
+	payOrderPaid?: T;
 };
 
 // mitt 参数类型定义

@@ -26,6 +26,11 @@
 						</el-form-item>
 					</el-col>
 					<el-col class="mb5" :xs="24" :sm="12" :md="8" :lg="6" :xl="6">
+						<el-form-item label="AccessKey" prop="clientKey">
+							<el-input v-model="state.queryParams.clientKey" placeholder="调用方 AccessKey" clearable @keyup.enter.native="handleQuery(true)" />
+						</el-form-item>
+					</el-col>
+					<el-col class="mb5" :xs="24" :sm="12" :md="8" :lg="6" :xl="6">
 						<el-form-item label="操作时间" prop="startTime">
 							<el-date-picker
 								v-model="state.queryParams.startTime"
@@ -70,7 +75,7 @@
 			<vxe-grid ref="xGrid" class="xGrid-style" v-bind="options" v-on="gridEvents" @cell-dblclick="handleView">
 				<template #toolbar_buttons>
 					<el-button icon="ele-FolderOpened" type="primary" @click="exportAuditLog" v-auth="'payExport/exportAuditLog'" :loading="state.exporting"> 导出审计日志 </el-button>
-					<el-tooltip content="本表只增不改：账号新增/编辑/追加额度/状态变更/删除、异常到账处理、数据导出都会留痕，含变更前后值" placement="top">
+					<el-tooltip content="本表只增不改：账号新增/编辑/额度调整/状态变更/删除、异常到账处理、数据导出都会留痕，含变更前后值" placement="top">
 						<el-icon style="margin-left: 6px; color: var(--el-text-color-secondary)"><ele-QuestionFilled /></el-icon>
 					</el-tooltip>
 				</template>
@@ -101,6 +106,7 @@
 				<el-descriptions-item label="对象标识">{{ state.detail.targetNo || '-' }}</el-descriptions-item>
 				<el-descriptions-item label="操作人">{{ state.detail.operatorName || '-' }}</el-descriptions-item>
 				<el-descriptions-item label="操作IP">{{ state.detail.operatorIp || '-' }}</el-descriptions-item>
+				<el-descriptions-item label="AccessKey" :span="2">{{ (state.detail as any).clientKey || '-' }}</el-descriptions-item>
 				<el-descriptions-item label="说明" :span="2">{{ state.detail.remark || '-' }}</el-descriptions-item>
 			</el-descriptions>
 
@@ -135,6 +141,7 @@ const state = reactive({
 		targetType: undefined,
 		targetNo: undefined,
 		operatorName: undefined,
+		clientKey: undefined,
 		startTime: undefined,
 		endTime: undefined,
 	},
@@ -151,7 +158,7 @@ const state = reactive({
 const actionOptions = [
 	{ label: '新增收款账号', value: 1 },
 	{ label: '编辑收款账号', value: 2 },
-	{ label: '追加额度', value: 3 },
+	{ label: '额度调整', value: 3 },
 	{ label: '变更账号状态', value: 4 },
 	{ label: '删除收款账号', value: 5 },
 	{ label: '异常到账处理', value: 6 },
@@ -160,6 +167,9 @@ const actionOptions = [
 	// ApiAuthFailure = 签名鉴权失败（401 发生在 MVC 之前，SysLogOp 采不到，只能落这张表）
 	{ label: '开放接口调用', value: 8 },
 	{ label: '开放接口认证失败', value: 9 },
+	{ label: '确认到账', value: 10 },
+	{ label: '重发商户通知', value: 11 },
+	{ label: '确认未到账', value: 12 },
 ];
 
 // 本地存储参数
@@ -176,6 +186,7 @@ const options = useVxeTable<PayAuditLog>(
 			{ field: 'targetType', title: '对象类型', minWidth: 120, showOverflow: 'tooltip' },
 			{ field: 'targetNo', title: '对象标识', minWidth: 140, showOverflow: 'tooltip' },
 			{ field: 'remark', title: '说明', minWidth: 240, showOverflow: 'tooltip' },
+			{ field: 'clientKey', title: 'AccessKey', minWidth: 140, showOverflow: 'tooltip' },
 			{ field: 'operatorName', title: '操作人', minWidth: 100, showOverflow: 'tooltip' },
 			{ field: 'operatorIp', title: '操作IP', minWidth: 130, showOverflow: 'tooltip' },
 			{ field: 'buttons', title: '操作', fixed: 'right', width: 90, showOverflow: true, slots: { default: 'row_buttons' } },
@@ -218,6 +229,7 @@ const resetQuery = async () => {
 	state.queryParams.targetType = undefined;
 	state.queryParams.targetNo = undefined;
 	state.queryParams.operatorName = undefined;
+	state.queryParams.clientKey = undefined;
 	state.queryParams.startTime = undefined;
 	state.queryParams.endTime = undefined;
 	await xGrid.value?.commitProxy('reload');

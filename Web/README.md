@@ -1,4 +1,4 @@
-# 支付中心 · 前端（`Web/`）
+# PulsePay · 前端（`Web/`）
 
 收款账号分配系统的管理端。Vue 3 + TypeScript + Element Plus + Vite 7。
 

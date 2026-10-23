@@ -5,7 +5,7 @@
 				<el-icon size="16" style="margin-right: 3px; display: inline; vertical-align: middle"> <ele-Postcard /> </el-icon>简介(About)
 			</h4>
 			<span class="text">
-				马上付 · 收款账号分配平台。后台维护收款账号/收款码与额度；下游按「商家订单号 + 收款类型 + 金额」调用
+				PulsePay · 收款账号分配平台。后台维护收款账号/收款码与额度；下游按「商家订单号 + 收款类型 + 金额」调用
 				<code>POST /api/pay/allocate</code> 获取收款信息并生成订单；到账由平台确认后经 Webhook 通知下游，形成可审计闭环。
 			</span>
 		</div>

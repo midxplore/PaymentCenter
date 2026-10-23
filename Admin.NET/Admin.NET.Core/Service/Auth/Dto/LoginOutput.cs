@@ -1,4 +1,4 @@
-﻿// Admin.NET 项目的版权、商标、专利和其他相关权利均受相应法律法规的保护。使用本项目应遵守相关法律法规和许可证的要求。
+// Admin.NET 项目的版权、商标、专利和其他相关权利均受相应法律法规的保护。使用本项目应遵守相关法律法规和许可证的要求。
 //
 // 本项目主要遵循 MIT 许可证和 Apache 许可证（版本 2.0）进行分发和使用。许可证位于源代码树根目录中的 LICENSE-MIT 和 LICENSE-APACHE 文件。
 //
@@ -12,14 +12,29 @@ namespace Admin.NET.Core.Service;
 public class LoginOutput
 {
     /// <summary>
-    /// 令牌Token
+    /// 令牌Token（TOTP 未完成时为空）
     /// </summary>
     public string AccessToken { get; set; }
 
     /// <summary>
-    /// 刷新Token
+    /// 刷新Token（TOTP 未完成时为空）
     /// </summary>
     public string RefreshToken { get; set; }
+
+    /// <summary>
+    /// 需要扫码绑定 Google Authenticator
+    /// </summary>
+    public bool NeedTotpSetup { get; set; }
+
+    /// <summary>
+    /// 需要输入 6 位动态码
+    /// </summary>
+    public bool NeedTotpVerify { get; set; }
+
+    /// <summary>
+    /// TOTP 中间票（绑定/验码用，短时有效）
+    /// </summary>
+    public string TotpTicket { get; set; }
 }
 
 /// <summary>

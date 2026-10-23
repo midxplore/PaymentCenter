@@ -229,7 +229,7 @@ const initI18nOrSize = (value: string, attr: string) => {
 		.login-right-warp {
 			border: 1px solid var(--el-color-primary-light-3);
 			border-radius: 3px;
-			height: 550px;
+			height: 620px;
 			position: relative;
 			overflow: hidden;
 			background-color: var(--el-color-white);

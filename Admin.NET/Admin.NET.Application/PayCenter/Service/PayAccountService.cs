@@ -70,6 +70,8 @@ public class PayAccountService : IDynamicApiController, ITransient
         {
             item.RemainingQuota = item.TotalQuota - item.UsedQuota - item.LockedQuota;
             item.StatusText = item.Status.GetDescription();
+            if (item.AccountTier == 0) item.AccountTier = PayAccountTierEnum.Normal;
+            item.AccountTierText = item.AccountTier.GetDescription();
             item.QrImageUrl ??= "";
         }
         return paged;
@@ -88,6 +90,8 @@ public class PayAccountService : IDynamicApiController, ITransient
         var output = account.Adapt<PayAccountOutput>();
         output.RemainingQuota = GetRemainingQuota(account);
         output.StatusText = account.Status.GetDescription();
+        if (output.AccountTier == 0) output.AccountTier = PayAccountTierEnum.Normal;
+        output.AccountTierText = output.AccountTier.GetDescription();
         output.QrImageUrl ??= "";
         return output;
     }
@@ -101,41 +105,55 @@ public class PayAccountService : IDynamicApiController, ITransient
     [DisplayName("新增收款账号")]
     public async Task<long> Add(AddPayAccountInput input)
     {
-        var accountInfo = NormalizeAccountInfo(input.AccountInfo);
+        var type = (input.Type ?? "").Trim();
+        var payeeName = (input.PayeeName ?? "").Trim();
+        var accountNo = (input.AccountNo ?? "").Trim();
+        var bankName = (input.BankName ?? "").Trim();
+        var branchName = (input.BranchName ?? "").Trim();
+        var accountInfo = NormalizeAccountInfo(string.IsNullOrEmpty(accountNo) ? input.AccountInfo : accountNo);
         var qrImageUrl = NormalizeQrImageUrl(input.QrImageUrl);
-        EnsureAccountPayload(accountInfo, qrImageUrl);
+        if (string.IsNullOrEmpty(accountNo) && !string.IsNullOrEmpty(accountInfo))
+            accountNo = accountInfo;
+        EnsureStructuredPayload(type, payeeName, accountNo, bankName, branchName, qrImageUrl);
 
         var account = new PayAccount
         {
-            Type = input.Type.Trim(),
+            Type = type,
+            PayeeName = string.IsNullOrEmpty(payeeName) ? null : payeeName,
+            AccountNo = string.IsNullOrEmpty(accountNo) ? null : accountNo,
+            BankName = string.IsNullOrEmpty(bankName) ? null : bankName,
+            BranchName = string.IsNullOrEmpty(branchName) ? null : branchName,
             AccountInfo = accountInfo,
             QrImageUrl = string.IsNullOrEmpty(qrImageUrl) ? null : qrImageUrl,
             TotalQuota = input.TotalQuota,
             UsedQuota = 0m,
             LockedQuota = 0m,
             Status = PayAccountStatusEnum.Enabled,
-            Remark = input.Remark
+            AccountTier = input.AccountTier == 0 ? PayAccountTierEnum.Normal : input.AccountTier,
+            MinAmount = NormalizeMinAmount(input.MinAmount, input.TotalQuota),
+            Remark = PayHtmlSanitize.Sanitize(input.Remark)
         };
         await _payAccountRep.InsertAsync(account);
 
-        // 快照不含账号文本和图片路径
         await _payAuditService.WriteAsync(PayAuditActionEnum.AccountAdd, nameof(PayAccount), account.Id,
             account.Type, null,
-            new { account.Type, account.TotalQuota, account.Status, HasQrImage = account.QrImageUrl != null },
+            new { account.Type, account.TotalQuota, account.MinAmount, account.Status, HasQrImage = account.QrImageUrl != null },
             $"新增收款账号，初始额度 {account.TotalQuota:0.00}");
 
         return account.Id;
     }
 
     /// <summary>
-    /// 上传收款码图片，返回根相对路径
+    /// 上传收款码图片，返回根相对路径（限边转 JPEG，减轻收银台加载）
     /// </summary>
     [ApiDescriptionSettings(Name = "UploadQr"), HttpPost]
     [DisplayName("上传收款码图片")]
     public async Task<string> UploadQr([Required] IFormFile file)
     {
+        // nginx 反代静态时无边缘压缩，落库前限边转 JPEG，收银台加载才快
+        var optimized = await PayQrImageOptimize.ToJpegFormFileAsync(file);
         var sysFile = await _sysFileService.UploadFile(
-            new UploadFileInput { File = file, AllowSuffix = QrAllowSuffix },
+            new UploadFileInput { File = optimized, AllowSuffix = ".jpg.jpeg" },
             "upload/pay-qr");
         return NormalizeQrImageUrl(sysFile.Url);
     }
@@ -151,11 +169,9 @@ public class PayAccountService : IDynamicApiController, ITransient
     {
         var account = await _payAccountRep.GetByIdAsync(input.Id) ?? throw Oops.Oh(ErrorCodeEnum.API_ACCOUNT_NOT_FOUND);
 
-        // 「已用完 / 占用中」是系统状态，不允许手工设为这两项
         if (input.Status == PayAccountStatusEnum.Exhausted || input.Status == PayAccountStatusEnum.InUse)
             throw Oops.Oh(ErrorCodeEnum.API_STATUS_READONLY);
 
-        // 启用前校验剩余额度，避免出现"启用但无额度"的无效状态
         if (input.Status == PayAccountStatusEnum.Enabled && GetRemainingQuota(account) <= 0)
             throw Oops.Oh(ErrorCodeEnum.API_QUOTA_EXHAUSTED);
 
@@ -167,31 +183,57 @@ public class PayAccountService : IDynamicApiController, ITransient
             HasQrImage = !string.IsNullOrEmpty(account.QrImageUrl)
         };
 
-        var accountInfo = account.AccountInfo ?? "";
-        var accountChanged = false;
-        if (input.AccountInfo != null)
-        {
-            accountInfo = NormalizeAccountInfo(input.AccountInfo);
-            accountChanged = true;
-        }
+        if (input.PayeeName != null)
+            account.PayeeName = string.IsNullOrWhiteSpace(input.PayeeName) ? null : input.PayeeName.Trim();
+        if (input.AccountNo != null)
+            account.AccountNo = string.IsNullOrWhiteSpace(input.AccountNo) ? null : input.AccountNo.Trim();
+        if (input.BankName != null)
+            account.BankName = string.IsNullOrWhiteSpace(input.BankName) ? null : input.BankName.Trim();
+        if (input.BranchName != null)
+            account.BranchName = string.IsNullOrWhiteSpace(input.BranchName) ? null : input.BranchName.Trim();
 
-        var qrImageUrl = account.QrImageUrl ?? "";
-        var qrChanged = false;
+        if (input.AccountInfo != null)
+            account.AccountInfo = NormalizeAccountInfo(input.AccountInfo);
+        else if (input.AccountNo != null)
+            account.AccountInfo = account.AccountNo ?? "";
+
         if (input.QrImageUrl != null)
         {
-            qrImageUrl = NormalizeQrImageUrl(input.QrImageUrl);
-            qrChanged = true;
+            var qr = NormalizeQrImageUrl(input.QrImageUrl);
+            account.QrImageUrl = string.IsNullOrEmpty(qr) ? null : qr;
         }
-        EnsureAccountPayload(accountInfo, qrImageUrl);
 
-        if (accountChanged)
-            account.AccountInfo = accountInfo;
-        if (qrChanged)
-            account.QrImageUrl = string.IsNullOrEmpty(qrImageUrl) ? null : qrImageUrl;
-        account.Remark = input.Remark;
+        EnsureStructuredPayload(
+            account.Type,
+            account.PayeeName ?? "",
+            account.AccountNo ?? account.AccountInfo ?? "",
+            account.BankName ?? "",
+            account.BranchName ?? "",
+            account.QrImageUrl ?? "");
+
+        account.Remark = PayHtmlSanitize.Sanitize(input.Remark);
         account.Status = input.Status;
+        if (input.AccountTier.HasValue && input.AccountTier.Value != 0)
+            account.AccountTier = input.AccountTier.Value;
+        if (input.MinAmount.HasValue)
+            account.MinAmount = NormalizeMinAmount(input.MinAmount.Value, account.TotalQuota);
         await _payAccountRep.AsUpdateable(account)
-            .UpdateColumns(u => new { u.AccountInfo, u.Remark, u.Status, u.QrImageUrl, u.UpdateTime, u.UpdateUserId, u.UpdateUserName })
+            .UpdateColumns(u => new
+            {
+                u.PayeeName,
+                u.AccountNo,
+                u.BankName,
+                u.BranchName,
+                u.AccountInfo,
+                u.Remark,
+                u.Status,
+                u.AccountTier,
+                u.MinAmount,
+                u.QrImageUrl,
+                u.UpdateTime,
+                u.UpdateUserId,
+                u.UpdateUserName
+            })
             .ExecuteCommandAsync();
 
         await _payAuditService.WriteAsync(PayAuditActionEnum.AccountUpdate, nameof(PayAccount), account.Id,
@@ -200,8 +242,8 @@ public class PayAccountService : IDynamicApiController, ITransient
             {
                 account.Remark,
                 account.Status,
-                AccountInfoChanged = accountChanged,
-                QrImageChanged = qrChanged,
+                account.AccountTier,
+                account.MinAmount,
                 HasAccountInfo = !string.IsNullOrEmpty(account.AccountInfo),
                 HasQrImage = !string.IsNullOrEmpty(account.QrImageUrl)
             },
@@ -209,41 +251,82 @@ public class PayAccountService : IDynamicApiController, ITransient
     }
 
     /// <summary>
-    /// 追加总额度（F1.2）
+    /// 调整总额度（增加 / 减少）
     /// </summary>
     /// <remarks>
-    /// 追加后若账号处于「已用完」且剩余额度恢复为正数，自动回置为「启用」重新参与匹配（F1.4）。
+    /// <para>增加：总额度累加；若原为「已用完」且剩余恢复为正，自动回「启用」（F1.4）。</para>
+    /// <para>
+    /// 减少：存在预占 <c>LockedQuota&gt;0</c> 或状态为历史「占用中」时拒绝（避免动到在途单占用的额度空间）；
+    /// 条件更新保证 <c>Total' ≥ Used</c> 且 <c>Total' ≥ MinAmount</c>，防并发超减。
+    /// </para>
+    /// <para>路由名仍为 <c>addQuota</c>，兼容既有按钮权限。</para>
     /// </remarks>
-    /// <param name="input"></param>
-    /// <returns></returns>
     [ApiDescriptionSettings(Name = "AddQuota"), HttpPost]
-    [DisplayName("追加总额度")]
+    [DisplayName("调整总额度")]
     public async Task AddQuota(AddQuotaInput input)
     {
+        if (input.Quota <= 0m) throw Oops.Oh(ErrorCodeEnum.API_QUOTA_AMOUNT_INVALID);
+        if (PayConst.HasExcessScale(input.Quota))
+            throw Oops.Bah($"调整金额小数位不能超过 {PayConst.AmountScale} 位");
+
         var before = await _payAccountRep.GetByIdAsync(input.Id) ?? throw Oops.Oh(ErrorCodeEnum.API_ACCOUNT_NOT_FOUND);
         var beforeQuota = before.TotalQuota;
+        var delta = input.Increase ? input.Quota : -input.Quota;
 
-        var rows = await _payAccountRep.AsUpdateable()
-            .SetColumns(u => new PayAccount
-            {
-                TotalQuota = u.TotalQuota + input.Quota,
-                UpdateTime = DateTime.Now,
-                UpdateUserId = _userManager.UserId,
-                UpdateUserName = _userManager.RealName
-            })
-            .Where(u => u.Id == input.Id)
-            .ExecuteCommandAsync();
-        if (rows == 0) throw Oops.Oh(ErrorCodeEnum.API_ACCOUNT_NOT_FOUND);
+        if (!input.Increase)
+        {
+            // 有在途预占 / 历史占用中：禁止调减（用户口径「占用中不能减少」）
+            if (before.LockedQuota > 0m || before.Status == PayAccountStatusEnum.InUse)
+                throw Oops.Bah("该账号存在预占或占用中的订单，暂不可调减额度；请待订单完结或过期后再操作");
 
-        // 额度恢复后自动解除「已用完」状态（F1.4，条件更新，天然幂等）
+            var minFloor = before.MinAmount > 0m ? before.MinAmount : 0m;
+            var floor = Math.Max(before.UsedQuota, minFloor);
+            if (before.TotalQuota - input.Quota < floor)
+                throw Oops.Bah($"调减后总额度不能低于 {floor:0.00}（已用 {before.UsedQuota:0.00}"
+                    + (minFloor > 0m ? $"，最小匹配金额 {minFloor:0.00}" : "") + "）");
+        }
+
+        // 条件更新：增加无额外守卫；减少再次校验 Locked=0 且 Total-quota >= max(Used, MinAmount)
+        var rows = input.Increase
+            ? await _payAccountRep.AsUpdateable()
+                .SetColumns(u => new PayAccount
+                {
+                    TotalQuota = u.TotalQuota + input.Quota,
+                    UpdateTime = DateTime.Now,
+                    UpdateUserId = _userManager.UserId,
+                    UpdateUserName = _userManager.RealName
+                })
+                .Where(u => u.Id == input.Id)
+                .ExecuteCommandAsync()
+            : await _payAccountRep.AsUpdateable()
+                .SetColumns(u => new PayAccount
+                {
+                    TotalQuota = u.TotalQuota - input.Quota,
+                    UpdateTime = DateTime.Now,
+                    UpdateUserId = _userManager.UserId,
+                    UpdateUserName = _userManager.RealName
+                })
+                .Where(u => u.Id == input.Id
+                    && u.LockedQuota == 0m
+                    && u.Status != PayAccountStatusEnum.InUse
+                    && u.TotalQuota - input.Quota >= u.UsedQuota
+                    && u.TotalQuota - input.Quota >= u.MinAmount)
+                .ExecuteCommandAsync();
+
+        if (rows == 0)
+        {
+            if (input.Increase) throw Oops.Oh(ErrorCodeEnum.API_ACCOUNT_NOT_FOUND);
+            throw Oops.Bah("调减失败：可能刚产生预占/占用，或调减后低于已用/最小金额，请刷新后重试");
+        }
+
         await SyncStatusByQuotaAsync(input.Id);
 
-        // F7.3 审计：记录追加前后总额度，便于对账
+        var afterQuota = beforeQuota + delta;
         await _payAuditService.WriteAsync(PayAuditActionEnum.QuotaAdd, nameof(PayAccount), input.Id,
             before.Type,
             new { TotalQuota = beforeQuota },
-            new { TotalQuota = beforeQuota + input.Quota },
-            $"追加额度 {input.Quota:0.00}");
+            new { TotalQuota = afterQuota },
+            input.Increase ? $"调增额度 {input.Quota:0.00}" : $"调减额度 {input.Quota:0.00}");
     }
 
     /// <summary>
@@ -290,7 +373,10 @@ public class PayAccountService : IDynamicApiController, ITransient
         var account = await _payAccountRep.GetByIdAsync(input.Id) ?? throw Oops.Oh(ErrorCodeEnum.API_ACCOUNT_NOT_FOUND);
 
         var hasActiveOrder = await _payOrderRep.AsQueryable().AnyAsync(u => u.AccountId == input.Id
-            && (u.Status == PayOrderStatusEnum.Pending || u.Status == PayOrderStatusEnum.Partial));
+            && (u.Status == PayOrderStatusEnum.Pending
+                || u.Status == PayOrderStatusEnum.Partial
+                || u.Status == PayOrderStatusEnum.AwaitingConfirm
+                || u.Status == PayOrderStatusEnum.Failed));
         if (hasActiveOrder) throw Oops.Oh(ErrorCodeEnum.API_ACCOUNT_IN_USE);
 
         await _payAccountRep.DeleteByIdAsync(input.Id);
@@ -308,8 +394,8 @@ public class PayAccountService : IDynamicApiController, ITransient
     /// <para>
     /// 供追加额度（F1.2）、额度释放与过期回收（F3.2）、到账结转（F4）等额度变动流程在写完后调用：
     /// 剩余归零 → 自动置「已用完」；剩余恢复为正 → 自动回置「启用」重新参与匹配。
-    /// 两个方向都用条件更新，天然幂等，也不会覆盖管理员手工「停用」或分配后的「占用中」
-    /// （只处理 Enabled ⇄ Exhausted 之间的迁移；InUse 须管理员显式启用才释放）。
+    /// 两个方向都用条件更新，天然幂等，也不会覆盖管理员手工「停用」。
+    /// 「占用中」由 <see cref="ReleaseInUseIfIdleAsync"/> 在订单终态结转后按是否仍有活跃单处理。
     /// </para>
     /// <para>
     /// 注意：匹配（F2）路径<b>不</b>调用本方法 —— 那里的「额度耗尽置位」已内联进
@@ -338,9 +424,124 @@ public class PayAccountService : IDynamicApiController, ITransient
             .ExecuteCommandAsync();
     }
 
-    private static void EnsureAccountPayload(string accountInfo, string qrImageUrl)
+    /// <summary>
+    /// 释放预占额度（不要求 InUse；过期重锁失败回滚等场景）
+    /// </summary>
+    [NonAction]
+    public async Task ReleaseLockedQuotaAsync(long accountId, decimal amount)
     {
-        if (string.IsNullOrEmpty(accountInfo) && string.IsNullOrEmpty(qrImageUrl))
+        if (accountId <= 0 || amount <= 0) return;
+        const string sql = @"
+UPDATE pay_account
+   SET LockedQuota = LockedQuota - @amount,
+       Status      = CASE
+                       WHEN Status = @disabled THEN @disabled
+                       WHEN TotalQuota <= UsedQuota + LockedQuota - @amount THEN @exhausted
+                       ELSE @enabled
+                     END,
+       UpdateTime  = @now
+ WHERE Id = @id
+   AND LockedQuota >= @amount;";
+        await _payAccountRep.Context.Ado.ExecuteCommandAsync(sql,
+            new SugarParameter("@amount", amount),
+            new SugarParameter("@id", accountId),
+            new SugarParameter("@now", DateTime.Now),
+            new SugarParameter("@enabled", (int)PayAccountStatusEnum.Enabled),
+            new SugarParameter("@exhausted", (int)PayAccountStatusEnum.Exhausted),
+            new SugarParameter("@disabled", (int)PayAccountStatusEnum.Disabled));
+    }
+
+    /// <summary>
+    /// 对指定账号重锁额度（过期订单重传）。抢不到返回 false。
+    /// </summary>
+    [NonAction]
+    public async Task<bool> TryRelockQuotaOnAccountAsync(long accountId, decimal amount)
+    {
+        if (accountId <= 0 || amount <= 0) return false;
+        const string sql = @"
+UPDATE pay_account
+   SET LockedQuota = LockedQuota + @amount,
+       Status      = CASE
+                       WHEN TotalQuota <= UsedQuota + LockedQuota + @amount THEN @exhausted
+                       ELSE @enabled
+                     END,
+       UpdateTime  = @now
+ WHERE Id = @id
+   AND Status = @enabled
+   AND IsDelete = false
+   AND TotalQuota >= UsedQuota + LockedQuota + @amount
+   AND COALESCE(MinAmount, 0) <= @amount
+RETURNING Id;";
+
+        var ids = await _payAccountRep.Context.Ado.SqlQueryAsync<long>(sql,
+            new SugarParameter("@amount", amount),
+            new SugarParameter("@now", DateTime.Now),
+            new SugarParameter("@id", accountId),
+            new SugarParameter("@enabled", (int)PayAccountStatusEnum.Enabled),
+            new SugarParameter("@exhausted", (int)PayAccountStatusEnum.Exhausted));
+        return ids.Count > 0;
+    }
+
+    /// <summary>最小金额：&lt;0 拒；&gt;总额度拒；0=不限制。</summary>
+    private static decimal NormalizeMinAmount(decimal minAmount, decimal totalQuota)
+    {
+        if (minAmount < 0m) throw Oops.Bah("最小金额不能为负");
+        if (minAmount > 0m && minAmount > totalQuota)
+            throw Oops.Bah("最小金额不能大于总额度");
+        return decimal.Round(minAmount, PayConst.AmountScale, MidpointRounding.AwayFromZero);
+    }
+
+    /// <summary>
+    /// 历史「占用中」残留：无其它非终态订单时回写启用/已用完。匹配已不再依赖 InUse。
+    /// </summary>
+    [NonAction]
+    public async Task ReleaseInUseIfIdleAsync(long accountId)
+    {
+        if (accountId <= 0) return;
+
+        var hasActive = await _payOrderRep.AsQueryable().AnyAsync(u => u.AccountId == accountId
+            && (u.Status == PayOrderStatusEnum.Pending
+                || u.Status == PayOrderStatusEnum.Partial
+                || u.Status == PayOrderStatusEnum.AwaitingConfirm
+                || u.Status == PayOrderStatusEnum.Failed));
+        if (hasActive) return;
+
+        var account = await _payAccountRep.GetByIdAsync(accountId);
+        if (account == null || account.Status != PayAccountStatusEnum.InUse) return;
+
+        var next = GetRemainingQuota(account) > 0m
+            ? PayAccountStatusEnum.Enabled
+            : PayAccountStatusEnum.Exhausted;
+
+        await _payAccountRep.AsUpdateable()
+            .SetColumns(u => new PayAccount { Status = next, UpdateTime = DateTime.Now })
+            .Where(u => u.Id == accountId && u.Status == PayAccountStatusEnum.InUse)
+            .ExecuteCommandAsync();
+    }
+
+    private static void EnsureStructuredPayload(string type, string payeeName, string accountNo,
+        string bankName, string branchName, string qrImageUrl)
+    {
+        type = (type ?? "").Trim();
+        payeeName = (payeeName ?? "").Trim();
+        accountNo = (accountNo ?? "").Trim();
+        bankName = (bankName ?? "").Trim();
+        branchName = (branchName ?? "").Trim();
+        qrImageUrl = (qrImageUrl ?? "").Trim();
+
+        if (string.IsNullOrEmpty(payeeName))
+            throw Oops.Bah("卖家姓名不能为空");
+
+        if (string.Equals(type, PayConst.TypeBank, StringComparison.OrdinalIgnoreCase))
+        {
+            if (string.IsNullOrEmpty(accountNo)) throw Oops.Bah("银行卡账号不能为空");
+            if (string.IsNullOrEmpty(bankName)) throw Oops.Bah("开户银行不能为空");
+            if (string.IsNullOrEmpty(branchName)) throw Oops.Bah("支行不能为空");
+            return;
+        }
+
+        // wxpay / alipay / cloudquickpass 等：姓名 +（账号或二维码）
+        if (string.IsNullOrEmpty(accountNo) && string.IsNullOrEmpty(qrImageUrl))
             throw Oops.Oh(ErrorCodeEnum.API_ACCOUNT_PAYLOAD_REQUIRED);
     }
 

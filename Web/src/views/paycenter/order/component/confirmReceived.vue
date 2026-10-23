@@ -10,12 +10,20 @@
 		</div>
 
 		<el-form label-width="88px" class="mt12">
-			<el-form-item label="水单" required>
+			<el-form-item v-if="cashierVouchers.length" label="收银台凭证">
+				<div class="voucher-thumbs">
+					<a v-for="(u, i) in cashierVouchers" :key="i" :href="u" target="_blank" rel="noopener" class="thumb-link">
+						<img v-if="isImage(u)" :src="u" alt="凭证" class="thumb" />
+						<span v-else class="thumb-file">凭证 {{ i + 1 }}</span>
+					</a>
+				</div>
+			</el-form-item>
+			<el-form-item label="水单" :required="!state.voucherUrl">
 				<div class="voucher-row">
 					<el-upload :show-file-list="false" :auto-upload="false" accept=".jpg,.jpeg,.png,.bmp,.webp,.pdf" :on-change="onVoucherChange">
 						<el-button type="primary" :loading="state.uploading" v-auth="'payOrder/uploadVoucher'">{{ state.voucherUrl ? '重新上传' : '上传水单' }}</el-button>
 					</el-upload>
-					<a v-if="state.voucherUrl" :href="state.voucherUrl" target="_blank" rel="noopener" class="voucher-link">已上传，点击查看</a>
+					<a v-if="state.voucherUrl" :href="state.voucherUrl" target="_blank" rel="noopener" class="voucher-link">已选水单，点击查看</a>
 				</div>
 			</el-form-item>
 			<el-form-item label="备注">
@@ -59,16 +67,30 @@ const gap = computed(() => {
 	return Number(r.requestAmount ?? 0) - Number(r.receivedAmount ?? 0);
 });
 
-const canSubmit = computed(() => !!state.voucherUrl && state.acked && gap.value > 0 && !state.submitting);
+const cashierVouchers = computed(() => {
+	const row = state.row as any;
+	const list = row?.voucherUrls;
+	if (Array.isArray(list) && list.length) return list.filter((u: string) => !!u);
+	if (row?.voucherUrl) return [row.voucherUrl];
+	return [] as string[];
+});
+
+const canSubmit = computed(() => {
+	const hasVoucher = !!state.voucherUrl || cashierVouchers.value.length > 0;
+	return hasVoucher && state.acked && gap.value > 0 && !state.submitting;
+});
 
 const money = (v: any) => {
 	const n = Number(v ?? 0);
 	return n.toFixed(2);
 };
 
+const isImage = (u: string) => /\.(jpe?g|png|bmp|webp)(\?|$)/i.test(u);
+
 const open = (row: PayOrderOutput) => {
 	state.row = row;
-	state.voucherUrl = '';
+	const urls = (row as any).voucherUrls as string[] | undefined;
+	state.voucherUrl = (urls && urls[0]) || row.voucherUrl || '';
 	state.remark = '';
 	state.acked = false;
 	state.visible = true;
@@ -100,18 +122,28 @@ const onVoucherChange = async (file: UploadFile) => {
 const submit = async () => {
 	if (!state.row || !canSubmit.value) return;
 	await ElMessageBox.confirm(
-		`确认订单 ${state.row.orderNo} 到账金额 ${money(gap.value)}？提交后将通知下游 Webhook。`,
+		`确认订单 ${state.row.orderNo} 到账金额 ${money(gap.value)}？提交后将尝试通知下游 Webhook。`,
 		'二次确认',
 		{ type: 'warning', confirmButtonText: '确认提交', cancelButtonText: '返回检查' }
 	);
 	state.submitting = true;
 	try {
-		await getAPI(PayOrderApi).apiPayOrderConfirmReceivedPost({
+		const res = await getAPI(PayOrderApi).apiPayOrderConfirmReceivedPost({
 			id: state.row.id!,
-			voucherUrl: state.voucherUrl,
+			voucherUrl: state.voucherUrl || cashierVouchers.value[0] || '',
 			remark: state.remark || null,
 		});
-		ElMessage.success('已确认到账，将通过 Webhook 通知下游');
+		const result = (res.data as any)?.result as
+			| { webhookDispatched?: boolean; webhookQueued?: boolean; webhookMessage?: string }
+			| undefined;
+		const tip = result?.webhookMessage?.trim();
+		if (result?.webhookDispatched) {
+			ElMessage.success(tip || '已确认到账，并已通知商户');
+		} else if (result?.webhookQueued) {
+			ElMessage.warning(tip || '已确认到账；商户通知未即时成功，可稍后点「通知商户」');
+		} else {
+			ElMessage.success(tip ? `已确认到账。${tip}` : '已确认到账');
+		}
 		state.visible = false;
 		emits('done');
 	} finally {
@@ -146,5 +178,31 @@ defineExpose({ open });
 .voucher-link {
 	font-size: 13px;
 	color: var(--el-color-primary);
+}
+.voucher-thumbs {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+.thumb {
+	width: 64px;
+	height: 64px;
+	object-fit: cover;
+	border-radius: 4px;
+	border: 1px solid var(--el-border-color);
+}
+.thumb-file {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 64px;
+	height: 64px;
+	font-size: 12px;
+	border: 1px dashed var(--el-border-color);
+	border-radius: 4px;
+	color: var(--el-color-primary);
+}
+.thumb-link {
+	text-decoration: none;
 }
 </style>

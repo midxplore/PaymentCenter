@@ -60,6 +60,9 @@ public class PayScopeResolver : IOpenAccessScopeResolver, ISingleton
         var path = context.Request.Path.Value ?? string.Empty;
         if (!path.StartsWith("/api/pay", StringComparison.OrdinalIgnoreCase)) return null;
 
+        // 收银台匿名接口（token 门禁，不走签名 / scope）
+        if (path.Contains("/cashier", StringComparison.OrdinalIgnoreCase)) return null;
+
         if (path.Contains("/notify", StringComparison.OrdinalIgnoreCase)) return PayConst.ScopeNotify;
         if (path.Contains("/allocate", StringComparison.OrdinalIgnoreCase) ||
             path.Contains("/status", StringComparison.OrdinalIgnoreCase)) return PayConst.ScopeAllocate;

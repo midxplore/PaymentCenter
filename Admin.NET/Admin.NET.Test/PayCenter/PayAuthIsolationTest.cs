@@ -126,7 +126,7 @@ public class PayAuthIsolationTest : IDisposable
 
         // 两笔独立订单，不是同一笔
         Assert.NotEqual(a.OrderNo, b.OrderNo);
-        Assert.False(b.IdempotentHit); // B 不应命中 A 的订单
+        Assert.NotEqual(a.CashierUrl, b.CashierUrl);
 
         // 落库各自归属正确
         var orderA = _db.Queryable<PayOrder>().First(u => u.OrderNo == a.OrderNo);
@@ -141,7 +141,7 @@ public class PayAuthIsolationTest : IDisposable
         {
             var again = await _allocateService.Allocate(BuildInput(30m, sharedExternalNo));
             Assert.Equal(a.OrderNo, again.OrderNo);
-            Assert.True(again.IdempotentHit);
+            Assert.Equal(a.CashierUrl, again.CashierUrl);
         }
 
         // 共 2 笔，不是 3 笔

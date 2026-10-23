@@ -50,7 +50,7 @@ public class PayNotifyService : ITransient
     /// <remarks>
     /// 单事务内完成。去重、累加、状态流转、额度结转、事件流水要么全成、要么全不成，
     /// 避免出现「凭证号已占位但金额没累加」这种导致资金永久丢失的中间态。
-    /// ★ HTTP 入口在 <see cref="PayNotifyController.Notify"/>（挂签名鉴权 + scope=notify）。
+    /// ★ 对外 HTTP <c>/api/pay/notify</c> 已下线；本服务供后台确认到账 / 异常关联 / 单测复用累加核心。
     /// </remarks>
     /// <param name="input"></param>
     /// <returns></returns>
@@ -228,7 +228,11 @@ public class PayNotifyService : ITransient
                 UpdateTime = now
             })
             .Where(u => u.Id == order.Id
-                && (u.Status == PayOrderStatusEnum.Pending || u.Status == PayOrderStatusEnum.Partial))
+                && (u.Status == PayOrderStatusEnum.Pending
+                    || u.Status == PayOrderStatusEnum.Partial
+                    || u.Status == PayOrderStatusEnum.AwaitingConfirm
+                    || u.Status == PayOrderStatusEnum.Failed
+                    || u.Status == PayOrderStatusEnum.Expired))
             .ExecuteCommandAsync();
         if (rows == 0) return null;
 
@@ -237,12 +241,14 @@ public class PayNotifyService : ITransient
         var requestAmount = fresh.RequestAmount;
         var received = fresh.ReceivedAmount;
         var overpay = received > requestAmount ? received - requestAmount : 0m;
+        // 步骤 4 累加时状态仍是原态；完成后才改 Completed。
+        var fromStatus = fresh.Status;
 
         if (received >= requestAmount)
         {
             // ── 步骤 5（完成）──────────────────────────────────────
             // 已用额度按「实际累计到账」计入（含超额部分，设计决策 #2：如实记账）；
-            // 锁定额度按「请求金额」全额释放。
+            // 锁定额度按「请求金额」全额释放；若 Locked 已因过期释放则为 0，只加 Used。
             //
             // ⚠️ 这里必须是累计到账 received，而不是本次到账 amount：
             //    分次到账场景下（如请求 100，先到 60 再到 50），前面的 60 在「部分到账」分支
@@ -260,25 +266,44 @@ public class PayNotifyService : ITransient
                     UpdateTime = now
                 })
                 .Where(u => u.Id == fresh.Id
-                    && (u.Status == PayOrderStatusEnum.Pending || u.Status == PayOrderStatusEnum.Partial))
+                    && (u.Status == PayOrderStatusEnum.Pending
+                        || u.Status == PayOrderStatusEnum.Partial
+                        || u.Status == PayOrderStatusEnum.AwaitingConfirm
+                        || u.Status == PayOrderStatusEnum.Failed
+                        || u.Status == PayOrderStatusEnum.Expired))
                 .ExecuteCommandAsync();
 
             if (completedRows == 1)
             {
                 // 由本请求完成该订单 → 由本请求负责额度结转与「完成」事件
-                await _payAccountRep.AsUpdateable()
+                var moved = await _payAccountRep.AsUpdateable()
                     .SetColumns(u => new PayAccount
                     {
                         UsedQuota = u.UsedQuota + received,
                         LockedQuota = u.LockedQuota - requestAmount,
+                        LastSuccessTime = now,
                         UpdateTime = now
                     })
                     // 下界守卫：并发下 LockedQuota 可能已被过期任务释放过，防止减成负数
                     .Where(u => u.Id == fresh.AccountId && u.LockedQuota >= requestAmount)
                     .ExecuteCommandAsync();
+                if (moved == 0)
+                {
+                    // 过期补录等：预占已释放，只记 Used
+                    await _payAccountRep.AsUpdateable()
+                        .SetColumns(u => new PayAccount
+                        {
+                            UsedQuota = u.UsedQuota + received,
+                            LastSuccessTime = now,
+                            UpdateTime = now
+                        })
+                        .Where(u => u.Id == fresh.AccountId)
+                        .ExecuteCommandAsync();
+                }
 
-                // 额度变动后同步账号状态（F1.4：超额到账可能让剩余额度归零）
+                // 额度变动后同步账号状态；无其它活跃单时解除占用中
                 await _payAccountService.SyncStatusByQuotaAsync(fresh.AccountId);
+                await _payAccountService.ReleaseInUseIfIdleAsync(fresh.AccountId);
 
                 // 步骤 6：事件流水（只增不改）
                 await _payOrderEventRep.InsertAsync(new PayOrderEvent
@@ -286,7 +311,7 @@ public class PayNotifyService : ITransient
                     OrderId = fresh.Id,
                     OrderNo = fresh.OrderNo,
                     EventType = PayEventTypeEnum.Completed,
-                    FromStatus = fresh.Status,
+                    FromStatus = fromStatus,
                     ToStatus = PayOrderStatusEnum.Completed,
                     Amount = amount,
                     ReceivedTotal = received,
@@ -321,10 +346,17 @@ public class PayNotifyService : ITransient
         {
             // ── 步骤 5（部分到账）──────────────────────────────────
             // 额度继续锁定，不动 UsedQuota / LockedQuota
+            // 已交凭证的「等待确认」保持 AwaitingConfirm；未到账部分到账后进 Partial
+            var nextStatus = fromStatus == PayOrderStatusEnum.AwaitingConfirm
+                ? PayOrderStatusEnum.AwaitingConfirm
+                : PayOrderStatusEnum.Partial;
             await _payOrderRep.AsUpdateable()
-                .SetColumns(u => new PayOrder { Status = PayOrderStatusEnum.Partial, UpdateTime = now })
+                .SetColumns(u => new PayOrder { Status = nextStatus, UpdateTime = now })
                 .Where(u => u.Id == fresh.Id
-                    && (u.Status == PayOrderStatusEnum.Pending || u.Status == PayOrderStatusEnum.Partial))
+                    && (u.Status == PayOrderStatusEnum.Pending
+                        || u.Status == PayOrderStatusEnum.Partial
+                        || u.Status == PayOrderStatusEnum.AwaitingConfirm
+                        || u.Status == PayOrderStatusEnum.Failed))
                 .ExecuteCommandAsync();
 
             await _payOrderEventRep.InsertAsync(new PayOrderEvent
@@ -332,8 +364,8 @@ public class PayNotifyService : ITransient
                 OrderId = fresh.Id,
                 OrderNo = fresh.OrderNo,
                 EventType = PayEventTypeEnum.PartialReceived,
-                FromStatus = fresh.Status,
-                ToStatus = PayOrderStatusEnum.Partial,
+                FromStatus = fromStatus,
+                ToStatus = nextStatus,
                 Amount = amount,
                 ReceivedTotal = received,
                 Remark = $"部分到账，本次 {amount:0.00}，累计 {received:0.00} / 应到 {requestAmount:0.00}",
@@ -346,7 +378,11 @@ public class PayNotifyService : ITransient
         {
             OrderId = fresh.Id,
             OrderNo = fresh.OrderNo,
-            Status = received >= requestAmount ? PayOrderStatusEnum.Completed : PayOrderStatusEnum.Partial,
+            Status = received >= requestAmount
+                ? PayOrderStatusEnum.Completed
+                : (fromStatus == PayOrderStatusEnum.AwaitingConfirm
+                    ? PayOrderStatusEnum.AwaitingConfirm
+                    : PayOrderStatusEnum.Partial),
             ReceivedAmount = received,
             RequestAmount = requestAmount,
             Overpay = overpay

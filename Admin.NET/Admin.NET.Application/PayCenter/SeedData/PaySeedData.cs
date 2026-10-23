@@ -68,7 +68,8 @@ public class PayConfigSeedData : ISqlSugarEntitySeedData<SysConfig>
     {
         return
         [
-            new SysConfig{ Id=1300000005201, Name="订单过期时长（分钟）", Code=PayConst.OrderExpireMinutes, Value=PayConst.DefaultOrderExpireMinutes.ToString(), SysFlag=YesNoEnum.Y, Remark="收款订单超过该时长未达成即自动过期并结转预占额度；账号占用中状态不因过期自动释放", OrderNo=510, GroupCode=ConfigConst.SysDefaultGroup, CreateTime=DateTime.Parse("2026-09-16 00:00:00") },
+            new SysConfig{ Id=1300000005201, Name="订单过期时长（分钟）", Code=PayConst.OrderExpireMinutes, Value=PayConst.DefaultOrderExpireMinutes.ToString(), SysFlag=YesNoEnum.Y, Remark="收款订单超过该时长未达成即自动过期并结转预占额度", OrderNo=510, GroupCode=ConfigConst.SysDefaultGroup, CreateTime=DateTime.Parse("2026-09-16 00:00:00") },
+            new SysConfig{ Id=1300000005202, Name="收款到账提示音", Code=PayConst.OrderAlertSoundUrl, Value="", SysFlag=YesNoEnum.Y, Remark="后台到账提醒播放地址；在「配置参数」中维护根相对路径或完整 URL，留空则不播放", OrderNo=520, GroupCode=ConfigConst.SysDefaultGroup, CreateTime=DateTime.Parse("2026-09-16 00:00:00") },
         ];
     }
 }

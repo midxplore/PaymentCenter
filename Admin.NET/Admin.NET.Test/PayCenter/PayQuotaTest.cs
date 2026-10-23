@@ -52,7 +52,7 @@ public class PayQuotaTest : IDisposable
     }
 
     private long SeedAccount(string info, decimal total, decimal used = 0m, decimal locked = 0m,
-        PayAccountStatusEnum status = PayAccountStatusEnum.Enabled)
+        PayAccountStatusEnum status = PayAccountStatusEnum.Enabled, decimal minAmount = 0m)
     {
         var account = new PayAccount
         {
@@ -62,6 +62,7 @@ public class PayQuotaTest : IDisposable
             UsedQuota = used,
             LockedQuota = locked,
             Status = status,
+            MinAmount = minAmount,
             Remark = "单元测试数据"
         };
         _db.Insertable(account).ExecuteCommand();
@@ -121,6 +122,32 @@ public class PayQuotaTest : IDisposable
 
         Assert.Null(lockedId);
         Assert.Equal(0m, GetLocked(disabled));
+    }
+
+    [Fact]
+    public async Task 最小金额_小额不应占用高门槛账号()
+    {
+        var largeMin = SeedAccount("MIN-500", 5000m, minAmount: 500m);
+        var noMin = SeedAccount("NO-MIN", 5000m, minAmount: 0m);
+
+        var lockedId = await _allocateService.TryLockQuotaAsync(TestType, 100m);
+
+        Assert.Equal(noMin, lockedId);
+        Assert.Equal(0m, GetLocked(largeMin));
+        Assert.Equal(100m, GetLocked(noMin));
+    }
+
+    [Fact]
+    public async Task 最小金额_达标时应优先选高门槛账号()
+    {
+        var largeMin = SeedAccount("MIN-500", 5000m, minAmount: 500m);
+        var noMin = SeedAccount("NO-MIN", 5000m, minAmount: 0m);
+
+        var lockedId = await _allocateService.TryLockQuotaAsync(TestType, 600m);
+
+        Assert.Equal(largeMin, lockedId);
+        Assert.Equal(600m, GetLocked(largeMin));
+        Assert.Equal(0m, GetLocked(noMin));
     }
 
     #endregion 最佳适配（F2.2）
@@ -186,29 +213,38 @@ public class PayQuotaTest : IDisposable
     }
 
     [Fact]
-    public async Task 锁定后_账号应置为占用中且不再被匹配()
+    public async Task 锁定耗尽额度_应置已用完且不再被匹配()
     {
         var accountId = SeedAccount("EXHAUST-100", 100m);
 
         await _allocateService.TryLockQuotaAsync(TestType, 100m);
 
-        Assert.Equal(PayAccountStatusEnum.InUse, GetAccount(accountId).Status);
-        // 占用中的账号不再参与匹配（须管理员启用才释放）
+        Assert.Equal(PayAccountStatusEnum.Exhausted, GetAccount(accountId).Status);
         Assert.Null(await _allocateService.TryLockQuotaAsync(TestType, 1m));
     }
 
     [Fact]
-    public async Task 落单失败补偿释放_应解除占用并回到启用()
+    public async Task 落单失败补偿释放_应回到启用()
     {
         var accountId = SeedAccount("EXHAUST-100", 100m);
         await _allocateService.TryLockQuotaAsync(TestType, 100m);
-        Assert.Equal(PayAccountStatusEnum.InUse, GetAccount(accountId).Status);
+        Assert.Equal(PayAccountStatusEnum.Exhausted, GetAccount(accountId).Status);
 
-        // allocate 落单失败补偿路径：ReleaseQuotaAsync 同时解除 InUse
         await _allocateService.ReleaseQuotaAsync(accountId, 100m);
 
         Assert.Equal(PayAccountStatusEnum.Enabled, GetAccount(accountId).Status);
         Assert.NotNull(await _allocateService.TryLockQuotaAsync(TestType, 1m));
+    }
+
+    [Fact]
+    public async Task 部分锁定后_仍可继续匹配剩余额度()
+    {
+        var accountId = SeedAccount("REUSE-100", 100m);
+        await _allocateService.TryLockQuotaAsync(TestType, 40m);
+        Assert.Equal(PayAccountStatusEnum.Enabled, GetAccount(accountId).Status);
+        Assert.Equal(40m, GetLocked(accountId));
+        Assert.NotNull(await _allocateService.TryLockQuotaAsync(TestType, 40m));
+        Assert.Equal(80m, GetLocked(accountId));
     }
 
     [Fact]
@@ -223,4 +259,42 @@ public class PayQuotaTest : IDisposable
     }
 
     #endregion 额度释放与状态同步（F1.4）
+
+    #region 额度调整
+
+    [Fact]
+    public async Task 额度调整_调增应增加总额度()
+    {
+        var accountId = SeedAccount("ADJ-UP", 100m);
+        await _accountService.AddQuota(new AddQuotaInput { Id = accountId, Quota = 50m, Increase = true });
+        Assert.Equal(150m, GetAccount(accountId).TotalQuota);
+    }
+
+    [Fact]
+    public async Task 额度调整_无预占时可调减()
+    {
+        var accountId = SeedAccount("ADJ-DOWN", 100m, used: 20m, locked: 0m);
+        await _accountService.AddQuota(new AddQuotaInput { Id = accountId, Quota = 30m, Increase = false });
+        Assert.Equal(70m, GetAccount(accountId).TotalQuota);
+    }
+
+    [Fact]
+    public async Task 额度调整_有预占时禁止调减()
+    {
+        var accountId = SeedAccount("ADJ-LOCK", 100m, used: 0m, locked: 40m);
+        await Assert.ThrowsAnyAsync<Exception>(() =>
+            _accountService.AddQuota(new AddQuotaInput { Id = accountId, Quota = 10m, Increase = false }));
+        Assert.Equal(100m, GetAccount(accountId).TotalQuota);
+    }
+
+    [Fact]
+    public async Task 额度调整_调减不得低于已用()
+    {
+        var accountId = SeedAccount("ADJ-USED", 100m, used: 80m, locked: 0m);
+        await Assert.ThrowsAnyAsync<Exception>(() =>
+            _accountService.AddQuota(new AddQuotaInput { Id = accountId, Quota = 30m, Increase = false }));
+        Assert.Equal(100m, GetAccount(accountId).TotalQuota);
+    }
+
+    #endregion 额度调整
 }

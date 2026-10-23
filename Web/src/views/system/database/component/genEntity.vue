@@ -71,7 +71,7 @@ const openDialog = (row: any) => {
 	state.ruleForm.entityName = upperFirst(camelCase(row.tableName));
 	state.ruleForm.baseClassName = 'EntityBase';
 	state.ruleForm.position = row.position;
-	state.ruleForm.authorName = '支付中心';
+	state.ruleForm.authorName = 'PulsePay';
 	state.isShowDialog = true;
 };
 

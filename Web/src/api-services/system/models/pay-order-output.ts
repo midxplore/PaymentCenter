@@ -156,6 +156,22 @@ export interface PayOrderOutput {
     voucherUrl?: string | null;
 
     /**
+     * 收银台上传的凭证路径列表
+     *
+     * @type {Array<string>}
+     * @memberof PayOrderOutput
+     */
+    voucherUrls?: Array<string> | null;
+
+    /**
+     * 商户 Webhook 是否已成功派发过（成功后不可再点「通知商户」）
+     *
+     * @type {boolean}
+     * @memberof PayOrderOutput
+     */
+    webhookNotified?: boolean;
+
+    /**
      * 创建时间
      *
      * @type {Date}

@@ -27,11 +27,39 @@ public class PayAccount : EntityBase
     public virtual string Type { get; set; }
 
     /// <summary>
-    /// 账号信息（卡号 / 账号 / 收款码文本）。只上传图片时为空字符串。
+    /// 账号信息（兼容旧数据；新建以 <see cref="AccountNo"/> 为准，可同步写入本列）
     /// </summary>
     [SugarColumn(ColumnDescription = "账号信息", Length = 512)]
     [Required, MaxLength(512)]
     public virtual string AccountInfo { get; set; }
+
+    /// <summary>
+    /// 卖家姓名（收银台展示）
+    /// </summary>
+    [SugarColumn(ColumnDescription = "卖家姓名", Length = PayConst.PayeeNameLength, IsNullable = true)]
+    [MaxLength(PayConst.PayeeNameLength)]
+    public virtual string PayeeName { get; set; }
+
+    /// <summary>
+    /// 收款账号号（卡号 / 支付宝号等）
+    /// </summary>
+    [SugarColumn(ColumnDescription = "收款账号", Length = PayConst.AccountNoLength, IsNullable = true)]
+    [MaxLength(PayConst.AccountNoLength)]
+    public virtual string AccountNo { get; set; }
+
+    /// <summary>
+    /// 开户银行（银行卡类型必填）
+    /// </summary>
+    [SugarColumn(ColumnDescription = "开户银行", Length = PayConst.BankNameLength, IsNullable = true)]
+    [MaxLength(PayConst.BankNameLength)]
+    public virtual string BankName { get; set; }
+
+    /// <summary>
+    /// 支行信息（银行卡类型必填）
+    /// </summary>
+    [SugarColumn(ColumnDescription = "支行信息", Length = PayConst.BankNameLength, IsNullable = true)]
+    [MaxLength(PayConst.BankNameLength)]
+    public virtual string BranchName { get; set; }
 
     /// <summary>
     /// 收款码图片的根相对路径，例如 <c>/upload/pay-qr/{id}.png</c>。无图时为空。
@@ -59,16 +87,28 @@ public class PayAccount : EntityBase
     public virtual decimal LockedQuota { get; set; }
 
     /// <summary>
-    /// 状态：启用 / 停用 / 已用完 / 占用中
+    /// 状态：启用 / 停用 / 已用完 / 占用中（占用中仅历史兼容，匹配不再依赖）
     /// </summary>
     [SugarColumn(ColumnDescription = "状态")]
     public virtual PayAccountStatusEnum Status { get; set; } = PayAccountStatusEnum.Enabled;
 
     /// <summary>
+    /// 账号分层：普通（非过期单≤2）/ 大额（不限次数）
+    /// </summary>
+    [SugarColumn(ColumnDescription = "账号分层")]
+    public virtual PayAccountTierEnum AccountTier { get; set; } = PayAccountTierEnum.Normal;
+
+    /// <summary>
+    /// 匹配最小金额；0 表示不限制。&gt;0 时请求金额须 ≥ 本值才可匹配，并优先于低门槛账号。
+    /// </summary>
+    [SugarColumn(ColumnDescription = "匹配最小金额", ColumnDataType = "decimal(18,2)", DefaultValue = "0")]
+    public virtual decimal MinAmount { get; set; }
+
+    /// <summary>
     /// 备注
     /// </summary>
-    [SugarColumn(ColumnDescription = "备注", Length = 256, IsNullable = true)]
-    [MaxLength(256)]
+    [SugarColumn(ColumnDescription = "备注（收银台 Notice，可含受限 HTML）", Length = PayConst.AccountRemarkLength, IsNullable = true)]
+    [MaxLength(PayConst.AccountRemarkLength)]
     public virtual string Remark { get; set; }
 
     /// <summary>

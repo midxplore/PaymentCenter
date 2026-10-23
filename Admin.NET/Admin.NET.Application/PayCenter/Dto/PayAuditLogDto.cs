@@ -37,6 +37,11 @@ public class PagePayAuditLogInput : BasePageInput
     public string OperatorName { get; set; }
 
     /// <summary>
+    /// 调用方 AccessKey（模糊匹配，开放接口审计）
+    /// </summary>
+    public string ClientKey { get; set; }
+
+    /// <summary>
     /// 开始时间
     /// </summary>
     public DateTime? StartTime { get; set; }

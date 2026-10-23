@@ -97,7 +97,7 @@
 </template>
 
 <script setup lang="ts" name="layoutBreadcrumbUser">
-import { defineAsyncComponent, ref, computed, reactive, onMounted } from 'vue';
+import { defineAsyncComponent, ref, computed, reactive, onMounted, h } from 'vue';
 import { ElMessageBox, ElMessage, ElNotification } from 'element-plus';
 import { Avatar, CircleCloseFilled, Loading, Lock } from '@element-plus/icons-vue';
 import { useRouter } from 'vue-router';
@@ -116,7 +116,8 @@ import { languageList, getCountryCode } from '/@/i18n';
 import '/node_modules/flag-icons/css/flag-icons.min.css';
 
 import { clearAccessTokens, getAPI } from '/@/utils/axios-utils';
-import { SysAuthApi, SysCommonApi, SysNoticeApi, SysUserApi } from '/@/api-services/system/api';
+import { auths } from '/@/utils/authFunction';
+import { PayOrderApi, SysAuthApi, SysCommonApi, SysNoticeApi, SysUserApi } from '/@/api-services/system/api';
 
 // 引入组件
 const UserNews = defineAsyncComponent(() => import('/@/layout/navBars/topBar/userNews.vue'));
@@ -296,23 +297,11 @@ onMounted(async () => {
 	}
 	// 接收站内信
 	signalR.on('PublicNotice', receiveNotice);
-
-	// // 处理消息已读
-	// mittBus.on('noticeRead', (id) => {
-	// 	const notice = state.noticeList.find((r: any) => r.id == id);
-	// 	if (notice == undefined) return;
-
-	// 	// 设置已读
-	// 	notice.readStatus = 1;
-	// });
+	signalR.on('PayOrderPaidAlert', receivePayOrderPaid);
 
 	// 是否修改密码
 	await changePassword();
 });
-// // 页面卸载时
-// onUnmounted(() => {
-// 	mittBus.off('noticeRead', () => {});
-// });
 
 const receiveNotice = (msg: any) => {
 	state.noticeList.unshift(msg);
@@ -328,6 +317,78 @@ const receiveNotice = (msg: any) => {
 		icon: '/upload/logo.svg', // 系统 logo（由后端 wwwroot/upload 提供）
 		timeout: 4500, // 通知显示时间，单位为毫秒
 	});
+};
+
+/** 收银台凭证提交已到账（仅运营：确认到账 / 提示音相关权限；商户只读不弹） */
+const receivePayOrderPaid = async (msg: any) => {
+	if (!auths(['payOrder/confirmReceived', 'payOrder/getAlertSound'])) return;
+
+	const orderNo = String(msg?.orderNo || '').trim();
+	const title = String(msg?.title || '收款到账');
+	const body = String(msg?.message || (orderNo ? `订单 ${orderNo} 已到账` : '有新的收款到账'));
+	mittBus.emit('payOrderPaid', msg);
+
+	// 顶栏铃铛未读列表（会话内提示；非站内信落库）
+	const now = new Date();
+	const pad = (n: number) => String(n).padStart(2, '0');
+	const publicTime = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+	state.noticeList.unshift({
+		id: -Date.now(),
+		title,
+		content: body,
+		type: 1,
+		publicTime,
+		readStatus: 0,
+		_payOrderNo: orderNo,
+	});
+
+	ElNotification({
+		title,
+		message: h(
+			'a',
+			{
+				style: 'color: var(--el-color-primary); cursor: pointer; text-decoration: underline;',
+				onClick: () => goPayOrder(orderNo),
+			},
+			body
+		),
+		type: 'success',
+		position: 'bottom-right',
+		duration: 12000,
+		onClick: () => goPayOrder(orderNo),
+	});
+	Push.create(title, {
+		body,
+		icon: '/upload/logo.svg',
+		timeout: 8000,
+		onClick: () => {
+			window.focus();
+			goPayOrder(orderNo);
+		},
+	});
+	await playPayAlertSound();
+};
+
+const goPayOrder = (orderNo: string) => {
+	const q = orderNo ? { orderNo } : {};
+	router.push({ path: '/paycenter/order', query: q });
+};
+
+let payAlertAudio: HTMLAudioElement | null = null;
+const playPayAlertSound = async () => {
+	try {
+		const res = await getAPI(PayOrderApi).apiPayOrderGetAlertSoundGet();
+		const url = String(res?.data?.result || '').trim();
+		if (!url) return;
+		const src = url.startsWith('http') || url.startsWith('/') ? url : `/${url}`;
+		if (!payAlertAudio || payAlertAudio.src !== src) {
+			payAlertAudio = new Audio(src);
+		}
+		payAlertAudio.currentTime = 0;
+		await payAlertAudio.play();
+	} catch {
+		/* 无权限或未配置则静默 */
+	}
 };
 
 // 修改密码

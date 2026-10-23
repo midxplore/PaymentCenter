@@ -71,6 +71,63 @@ public class PayDtoValidationTest
         Assert.False(IsValid(new AllocateInput { Type = "wxpay", Amount = 10m, ExternalNo = "" }));
     }
 
+    [Fact]
+    public void AllocateInput_带合法返回地址与文案_应通过()
+    {
+        Assert.True(IsValid(new AllocateInput
+        {
+            Type = "wxpay",
+            Amount = 10m,
+            ExternalNo = "EXT-1",
+            ReturnUrl = "https://merchant.example/pay/done",
+            ReturnLabel = "回商城"
+        }));
+    }
+
+    [Fact]
+    public void AllocateInput_返回地址超长_应失败()
+    {
+        Assert.False(IsValid(new AllocateInput
+        {
+            Type = "wxpay",
+            Amount = 10m,
+            ExternalNo = "EXT-1",
+            ReturnUrl = "https://x/" + new string('a', 520)
+        }));
+    }
+
+    [Fact]
+    public void AllocateInput_返回文案超长_应失败()
+    {
+        Assert.False(IsValid(new AllocateInput
+        {
+            Type = "wxpay",
+            Amount = 10m,
+            ExternalNo = "EXT-1",
+            ReturnLabel = new string('返', 17)
+        }));
+    }
+
+    [Fact]
+    public void PayReturnTarget_仅允许http或https绝对地址()
+    {
+        Assert.Null(PayReturnTarget.NormalizeUrl(null));
+        Assert.Null(PayReturnTarget.NormalizeUrl("  "));
+        Assert.Equal("https://a.example/x", PayReturnTarget.NormalizeUrl(" https://a.example/x "));
+        Assert.ThrowsAny<Exception>(() => PayReturnTarget.NormalizeUrl("javascript:alert(1)"));
+        Assert.ThrowsAny<Exception>(() => PayReturnTarget.NormalizeUrl("/relative/path"));
+        Assert.ThrowsAny<Exception>(() => PayReturnTarget.NormalizeUrl("ftp://x"));
+    }
+
+    [Fact]
+    public void PayReturnTarget_文案空则null否则截断()
+    {
+        Assert.Null(PayReturnTarget.NormalizeLabel(null));
+        Assert.Null(PayReturnTarget.NormalizeLabel("  "));
+        Assert.Equal("返回商城", PayReturnTarget.NormalizeLabel(" 返回商城 "));
+        Assert.Equal(new string('字', 16), PayReturnTarget.NormalizeLabel(new string('字', 20)));
+    }
+
     #endregion AllocateInput（F2）
 
     #region NotifyInput（F4）

@@ -28,5 +28,11 @@ public enum PayAbnormalReasonEnum
     /// 订单已完成（终态后重复到账）
     /// </summary>
     [Description("订单已完成")]
-    OrderCompleted = 3
+    OrderCompleted = 3,
+
+    /// <summary>
+    /// 过期后重传凭证时无法重新预占额度（已被他人占用）
+    /// </summary>
+    [Description("过期重传额度不足")]
+    ExpiredReuploadNoQuota = 4
 }

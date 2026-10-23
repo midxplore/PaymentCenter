@@ -15,7 +15,8 @@ namespace Admin.NET.Core.Service;
 [ApiDescriptionSettings(Order = 410, Description = "系统文件")]
 public class SysFileService : IDynamicApiController, ITransient
 {
-    private readonly string _imageType = ".jpeg.jpg.png.bmp.gif.tif.svg";
+    // 不含 .svg：SVG 可内嵌脚本；全局 Upload.json 也已去掉 image/svg+xml
+    private readonly string _imageType = ".jpeg.jpg.png.bmp.gif.tif";
 
     private readonly UserManager _userManager;
     private readonly SqlSugarRepository<SysFile> _sysFileRep;
@@ -325,9 +326,14 @@ public class SysFileService : IDynamicApiController, ITransient
         }
         if (string.IsNullOrWhiteSpace(suffix)) throw Oops.Oh(ErrorCodeEnum.D8003);
 
-        // 防止客户端伪造文件类型
+        // 防止客户端伪造文件类型（扩展名白名单）
         if (!string.IsNullOrWhiteSpace(input.AllowSuffix) && !input.AllowSuffix.Contains(suffix)) throw Oops.Oh(ErrorCodeEnum.D8003);
-        //if (!VerifyFileExtensionName.IsSameType(file.OpenReadStream(), suffix)) throw Oops.Oh(ErrorCodeEnum.D8001);
+
+        // 文件头魔数：扩展名与实际内容一致，并拒绝脚本/HTML 伪装
+        await using (var probe = input.File.OpenReadStream())
+        {
+            FileContentProbe.EnsureSafeAndMatches(probe, suffix);
+        }
 
         // 文件存储位置
         var path = string.IsNullOrWhiteSpace(targetPath) ? _uploadOptions.Path : targetPath;

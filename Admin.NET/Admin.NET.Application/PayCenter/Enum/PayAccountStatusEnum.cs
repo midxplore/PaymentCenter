@@ -31,7 +31,7 @@ public enum PayAccountStatusEnum
     Exhausted = 3,
 
     /// <summary>
-    /// 占用中（已分配订单，须管理员改回启用后才能再次匹配；过期/确认到账均不自动释放）
+    /// 占用中（已匹配订单并预占；该账号无其它非终态订单后，过期/确认到账/未到账会自动回启用或已用完）
     /// </summary>
     [Description("占用中")]
     InUse = 4

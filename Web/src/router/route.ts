@@ -119,6 +119,15 @@ export const staticRoutes: Array<RouteRecordRaw> = [
 			isPublic: true,
 		},
 	},
+	{
+		path: '/c/:token',
+		name: 'payCashier',
+		component: () => import('/@/views/pay/cashier/index.vue'),
+		meta: {
+			title: '收银台',
+			isPublic: true,
+		},
+	},
 	/**
 	 * 提示：写在这里的为全屏界面，不建议写在这里
 	 * 请写在 `dynamicRoutes` 路由数组中

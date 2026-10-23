@@ -100,27 +100,36 @@
 						<el-button icon="ele-InfoFilled" size="small" text type="primary" @click="handleView(row)" v-auth="'payOrder/detail'" />
 					</el-tooltip>
 					<el-tooltip v-if="canConfirm(row)" content="确认到账" placement="top">
-						<el-button icon="ele-CircleCheck" size="small" text type="success" @click="handleConfirm(row)" v-auth="'payOrder/confirmReceived'" />
+						<el-button icon="ele-CircleCheck" size="small" text type="success" @click="handleConfirm(row)" v-auth="'payOrder/confirmReceived'">
+							到账
+						</el-button>
+					</el-tooltip>
+					<el-tooltip v-if="canResend(row)" :content="resendTip(row)" placement="top">
+						<el-button icon="ele-Promotion" size="small" text type="warning" @click="handleResend(row)" v-auth="'payOrder/resendWebhook'">
+							通知
+						</el-button>
 					</el-tooltip>
 				</template>
 			</vxe-grid>
 		</el-card>
 
-		<OrderDetail ref="detailRef" />
+		<OrderDetail ref="detailRef" @confirm="handleConfirm" @done="handleQuery(false)" />
 		<ConfirmReceived ref="confirmRef" @done="handleQuery(false)" />
 	</div>
 </template>
 
 <!-- 收款订单（F7.1 / F7.2） -->
 <script lang="ts" setup name="payOrder">
-import { onMounted, reactive, ref } from 'vue';
-import { ElMessage } from 'element-plus';
+import { onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { useRoute } from 'vue-router';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import { useDateTimeShortCust } from '/@/hooks/dateTimeShortCust';
 import { VxeGridInstance, VxeGridListeners, VxeGridPropTypes } from 'vxe-table';
 import { useVxeTable } from '/@/hooks/useVxeTableOptionsHook';
 import { Local } from '/@/utils/storage';
 import { auth } from '/@/utils/authFunction';
 import { downloadByData, getFileName } from '/@/utils/download';
+import mittBus from '/@/utils/mitt';
 
 import OrderDetail from '/@/views/paycenter/order/component/orderDetail.vue';
 import ConfirmReceived from '/@/views/paycenter/order/component/confirmReceived.vue';
@@ -131,14 +140,15 @@ import { PagePayOrderInput, PayOrderOutput, PayOrderExportInput, PayEnumOption, 
 import { resolveExportRange, toExportInput } from '/@/views/paycenter/utils/exportParams';
 
 const shortcuts = useDateTimeShortCust();
+const route = useRoute();
 const xGrid = ref<VxeGridInstance>();
 const detailRef = ref<InstanceType<typeof OrderDetail>>();
 const confirmRef = ref<InstanceType<typeof ConfirmReceived>>();
 const state = reactive({
 	queryParams: {
-		orderNo: undefined,
+		orderNo: undefined as string | undefined,
 		externalNo: undefined,
-		status: undefined,
+		status: undefined as number | undefined,
 		accountId: undefined,
 		startTime: undefined,
 		endTime: undefined,
@@ -173,7 +183,7 @@ const options = useVxeTable<PayOrderOutput>(
 			{ field: 'completeTime', title: '完成时间', minWidth: 160, showOverflow: 'tooltip', formatter: ({ cellValue }) => fmtTime(cellValue) },
 			{ field: 'createTime', title: '创建时间', minWidth: 160, showOverflow: 'tooltip', formatter: ({ cellValue }) => fmtTime(cellValue) },
 			{ field: 'overpayRemark', title: '超额备注', minWidth: 140, showOverflow: 'tooltip' },
-			{ field: 'buttons', title: '操作', fixed: 'right', width: 120, showOverflow: true, slots: { default: 'row_buttons' } },
+			{ field: 'buttons', title: '操作', fixed: 'right', width: 160, showOverflow: true, slots: { default: 'row_buttons' } },
 		],
 	},
 	// vxeGrid配置参数(此处可覆写任何参数)，参考vxe-table官方文档
@@ -189,9 +199,18 @@ const options = useVxeTable<PayOrderOutput>(
 	}
 );
 
+const onPayOrderPaid = (msg: any) => {
+	const no = String(msg?.orderNo || '').trim();
+	if (no) state.queryParams.orderNo = no;
+	handleQuery(true);
+};
+
 // 页面初始化
 onMounted(async () => {
 	state.localPageParam = Local.get(localPageParamKey) || state.localPageParam;
+
+	const qNo = String(route.query.orderNo || '').trim();
+	if (qNo) state.queryParams.orderNo = qNo;
 
 	// 状态下拉：直接取后端枚举，避免前端再抄一份中文
 	try {
@@ -210,6 +229,13 @@ onMounted(async () => {
 			state.accountData = [];
 		}
 	}
+
+	mittBus.on('payOrderPaid', onPayOrderPaid);
+	if (qNo) handleQuery(true);
+});
+
+onBeforeUnmount(() => {
+	mittBus.off('payOrderPaid', onPayOrderPaid);
 });
 
 // 查询api
@@ -260,12 +286,62 @@ const handleView = async (row: any) => {
 };
 
 const canConfirm = (row: PayOrderOutput) => {
-	const s = Number(row.status);
-	return s === 1 || s === 2;
+	const s = normalizeOrderStatus(row.status);
+	// 补录/异常：Pending / Partial / AwaitingConfirm / Failed / Expired（正常收银台已自动到账）
+	return s === 1 || s === 2 || s === 4 || s === 5 || s === 6;
+};
+
+const canResend = (row: PayOrderOutput) => {
+	const s = normalizeOrderStatus(row.status);
+	// 仅已完成 / 未到账；已过期额度已释放，不提供人工通知
+	// 列表侧：仅未成功通知时显示，避免误点；已完成再次通知走详情
+	return (s === 3 || s === 6) && !row.webhookNotified;
+};
+
+const resendTip = (row: PayOrderOutput) => {
+	const s = normalizeOrderStatus(row.status);
+	if (s === 6) return '重试通知（Failed）';
+	return '重试通知';
+};
+
+/** 兼容数字枚举与名称字符串（AwaitingConfirm） */
+const normalizeOrderStatus = (status: any): number => {
+	if (typeof status === 'number' && !Number.isNaN(status)) return status;
+	const n = Number(status);
+	if (!Number.isNaN(n) && String(status).trim() !== '') return n;
+	const key = String(status ?? '');
+	const map: Record<string, number> = {
+		Pending: 1,
+		Partial: 2,
+		Completed: 3,
+		Expired: 4,
+		AwaitingConfirm: 5,
+		Failed: 6,
+	};
+	return map[key] ?? -1;
 };
 
 const handleConfirm = (row: PayOrderOutput) => {
 	confirmRef.value?.open(row);
+};
+
+const handleResend = async (row: PayOrderOutput) => {
+	await ElMessageBox.confirm(
+		`向商户重推订单 ${row.orderNo} 当前状态（${row.statusText}）？`,
+		'重试通知',
+		{ type: 'warning', confirmButtonText: '立即重试', cancelButtonText: '取消' }
+	);
+	try {
+		await getAPI(PayOrderApi).apiPayOrderResendWebhookPost({ id: row.id! });
+		ElMessage.success('已通知商户（对方返回 success）');
+		handleQuery(false);
+	} catch (e: any) {
+		const msg = e?.message || e?.response?.data?.message || '';
+		if (msg.includes('已入队')) {
+			ElMessage.warning(msg.replace(/^\[.*?\]\s*/, '') || msg);
+			handleQuery(false);
+		}
+	}
 };
 
 // 导出订单（F7.5）
@@ -298,9 +374,9 @@ const fmtTime = (value: any) => {
 	const p = (n: number) => String(n).padStart(2, '0');
 	return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 };
-// 状态色（值来自 PayOrderStatusEnum：1待到账 2部分到账 3已完成 4已过期）
+// 状态色（1待到账 2部分到账 3已完成 4已过期 5等待确认 6未到账）
 const statusTagType = (status: any) => {
-	switch (Number(status)) {
+	switch (normalizeOrderStatus(status)) {
 		case 1:
 			return 'info';
 		case 2:
@@ -308,6 +384,10 @@ const statusTagType = (status: any) => {
 		case 3:
 			return 'success';
 		case 4:
+			return 'danger';
+		case 5:
+			return 'warning';
+		case 6:
 			return 'danger';
 		default:
 			return 'info';

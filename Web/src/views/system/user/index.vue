@@ -90,6 +90,7 @@
 							</el-tooltip>
 
 							<el-button icon="ele-RefreshLeft" text type="danger" v-auth="'sysUser/resetPwd'" @click="resetQueryPwd(row)">{{ $t('message.list.resetPassword') }}</el-button>
+							<el-button icon="ele-Key" text type="warning" v-auth="'sysUser/resetTotp'" @click="resetTotp(row)">重置TOTP</el-button>
 							<el-button icon="ele-Unlock" text type="primary" v-auth="'sysUser/unlockLogin'" @click="handleUnlock(row)">{{ $t('message.list.unlockAccount') }}</el-button>
 						</template>
 					</vxe-grid>
@@ -120,6 +121,7 @@ import ModifyRecord from '/@/components/table/modifyRecord.vue';
 import { getAPI } from '/@/utils/axios-utils';
 import { SysUserApi, SysOrgApi } from '/@/api-services/system/api';
 import { SysOrg, PageTenantInput, UserOutput, UpdateUserInput } from '/@/api-services/system/models';
+import { resetUserTotp } from '/@/views/login/totpApi';
 
 const { t } = useI18n();
 const xGrid = ref<VxeGridInstance>();
@@ -321,6 +323,20 @@ const handleUnlock = async (row: any) => {
 				.then(() => {
 					ElMessage.success(t('message.list.unlockSuccess'));
 				});
+		})
+		.catch(() => {});
+};
+
+// 重置 TOTP（清空绑定，对方下次登录须重新扫码）
+const resetTotp = async (row: any) => {
+	ElMessageBox.confirm(`确认重置账号「${row.account}」的 Google Authenticator 绑定？对方下次登录须重新扫码。`, t('message.list.hint'), {
+		confirmButtonText: t('message.list.confirmButtonText'),
+		cancelButtonText: t('message.list.cancelButtonText'),
+		type: 'warning',
+	})
+		.then(async () => {
+			await resetUserTotp(row.id);
+			ElMessage.success('已重置 TOTP');
 		})
 		.catch(() => {});
 };

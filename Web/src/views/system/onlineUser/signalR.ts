@@ -2,10 +2,14 @@ import * as SignalR from '@microsoft/signalr';
 import { ElNotification } from 'element-plus';
 import { getToken } from '/@/utils/axios-utils';
 
-// 初始化SignalR对象
+// 初始化SignalR对象（token 用 factory，避免模块加载时取到空串、重连仍用过期 URL）
 const connection = new SignalR.HubConnectionBuilder()
 	.configureLogging(SignalR.LogLevel.Warning)
-	.withUrl(`${window.__env__.VITE_API_URL}/hubs/onlineUser?token=${getToken()}`, { transport: SignalR.HttpTransportType.WebSockets, skipNegotiation: true })
+	.withUrl(`${window.__env__.VITE_API_URL}/hubs/onlineUser`, {
+		transport: SignalR.HttpTransportType.WebSockets,
+		skipNegotiation: true,
+		accessTokenFactory: () => getToken() || '',
+	})
 	.withAutomaticReconnect({
 		nextRetryDelayInMilliseconds: () => {
 			return 5000; // 每5秒重连一次
@@ -21,6 +25,8 @@ connection.serverTimeoutInMilliseconds = 30 * 1000;
 // 启动连接
 connection.start().then(() => {
 	console.log('启动连接');
+}).catch((err) => {
+	console.warn('SignalR 连接失败', err);
 });
 // 断开连接
 connection.onclose(async () => {

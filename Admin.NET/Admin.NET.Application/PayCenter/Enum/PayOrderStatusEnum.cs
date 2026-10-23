@@ -10,33 +10,46 @@ namespace Admin.NET.Application;
 /// 收款订单状态枚举
 /// </summary>
 /// <remarks>
-/// 状态机：待到账 → 部分到账 → 已完成；待到账/部分到账 → 已过期。
-/// 「已完成」「已过期」为终态，不可逆。
+/// 收银台主路径：待到账 → 等待确认 → 已完成；
+/// 运营确认未到账 → 未到账（可再传凭证）→ 等待确认 / 超时过期；
+/// 「已完成」「已过期」为硬终态；「未到账」可继续支付直至过期。
 /// </remarks>
 [Description("收款订单状态枚举")]
 public enum PayOrderStatusEnum
 {
     /// <summary>
-    /// 待到账（已匹配账号并预占额度）
+    /// 待到账（已匹配账号并预占额度；收银台「确认付款」）
     /// </summary>
     [Description("待到账")]
     Pending = 1,
 
     /// <summary>
-    /// 部分到账（累计到账小于请求金额，额度继续锁定）
+    /// 部分到账（累计到账小于请求金额，额度继续锁定；历史/异常路径）
     /// </summary>
     [Description("部分到账")]
     Partial = 2,
 
     /// <summary>
-    /// 已完成（累计到账达标，终态）
+    /// 已完成（累计到账达标，终态；收银台「确认收款」）
     /// </summary>
     [Description("已完成")]
     Completed = 3,
 
     /// <summary>
-    /// 已过期（超过过期时长仍未达标，终态）
+    /// 已过期（超时或收银台取消，终态；Webhook status=Expired）
     /// </summary>
     [Description("已过期")]
-    Expired = 4
+    Expired = 4,
+
+    /// <summary>
+    /// 等待确认（付款人已上传凭证，待运营审核）
+    /// </summary>
+    [Description("等待确认")]
+    AwaitingConfirm = 5,
+
+    /// <summary>
+    /// 未到账（运营确认未收到款；Webhook status=Failed；额度仍预占，收银台可再传凭证）
+    /// </summary>
+    [Description("未到账")]
+    Failed = 6
 }

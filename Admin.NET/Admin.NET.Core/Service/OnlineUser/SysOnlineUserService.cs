@@ -84,6 +84,29 @@ public class SysOnlineUserService : IDynamicApiController, ITransient
     }
 
     /// <summary>
+    /// 广播收款到账提醒给在线用户缓存中的连接（前端再按运营权限过滤展示）
+    /// </summary>
+    [NonAction]
+    public async Task BroadcastPayOrderPaidAsync(PayOrderPaidAlert alert)
+    {
+        if (alert == null) return;
+        var online = SysCacheService.HashGetAll<OnlineUser>(CacheConst.KeyUserOnline).Values.ToList();
+        if (online.Count == 0) return;
+        foreach (var item in online)
+        {
+            if (string.IsNullOrWhiteSpace(item.ConnectionId)) continue;
+            try
+            {
+                await _onlineUserHubContext.Clients.Client(item.ConnectionId).PayOrderPaidAlert(alert);
+            }
+            catch
+            {
+                // 单连接失败不拖垮整批（缓存里可能有已断开的脏 ConnectionId）
+            }
+        }
+    }
+
+    /// <summary>
     /// 单用户登录
     /// </summary>
     /// <param name="userId"></param>

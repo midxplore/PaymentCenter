@@ -29,6 +29,38 @@ export interface AddPayAccountInput {
     type: string;
 
     /**
+     * 卖家姓名
+     *
+     * @type {string}
+     * @memberof AddPayAccountInput
+     */
+    payeeName?: string | null;
+
+    /**
+     * 收款账号号
+     *
+     * @type {string}
+     * @memberof AddPayAccountInput
+     */
+    accountNo?: string | null;
+
+    /**
+     * 开户银行（银行卡）
+     *
+     * @type {string}
+     * @memberof AddPayAccountInput
+     */
+    bankName?: string | null;
+
+    /**
+     * 支行（银行卡）
+     *
+     * @type {string}
+     * @memberof AddPayAccountInput
+     */
+    branchName?: string | null;
+
+    /**
      * 账号信息（卡号 / 账号 / 收款码文本）。与收款码图片至少填一个。
      *
      * @type {string}
@@ -51,6 +83,22 @@ export interface AddPayAccountInput {
      * @memberof AddPayAccountInput
      */
     totalQuota?: number;
+
+    /**
+     * 账号分层（1普通 / 2大额，默认普通）
+     *
+     * @type {number}
+     * @memberof AddPayAccountInput
+     */
+    accountTier?: number;
+
+    /**
+     * 匹配最小金额（0=不限制）
+     *
+     * @type {number}
+     * @memberof AddPayAccountInput
+     */
+    minAmount?: number;
 
     /**
      * 备注

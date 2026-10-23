@@ -40,5 +40,17 @@ public enum PayEventTypeEnum
     /// 人工关联（异常到账补录到订单）
     /// </summary>
     [Description("人工关联")]
-    ManualLinked = 5
+    ManualLinked = 5,
+
+    /// <summary>
+    /// 收银台提交凭证（进入等待确认）
+    /// </summary>
+    [Description("凭证已提交")]
+    VoucherSubmitted = 6,
+
+    /// <summary>
+    /// 运营确认未到账（通知商户 Failed，订单可继续支付）
+    /// </summary>
+    [Description("确认未到账")]
+    MarkUnpaid = 7
 }

@@ -15,6 +15,7 @@
 import { PayNotifyRecordOutput } from './pay-notify-record-output';
 import { PayOrderEventOutput } from './pay-order-event-output';
 import { PayOrderOutput } from './pay-order-output';
+import { PayWebhookOutboxOutput } from './pay-webhook-outbox-output';
  /**
  * 后台订单详情输出（F7.1 全生命周期）
  *
@@ -38,7 +39,15 @@ export interface PayOrderDetailOutput {
     events?: Array<PayOrderEventOutput> | null;
 
     /**
-     * 到账通知明细（按到账时间升序）
+     * 商户通知（Webhook outbox，按入队时间倒序）
+     *
+     * @type {Array<PayWebhookOutboxOutput>}
+     * @memberof PayOrderDetailOutput
+     */
+    webhookRecords?: Array<PayWebhookOutboxOutput> | null;
+
+    /**
+     * 历史入站到账明细（旧 /api/pay/notify，已下线）
      *
      * @type {Array<PayNotifyRecordOutput>}
      * @memberof PayOrderDetailOutput

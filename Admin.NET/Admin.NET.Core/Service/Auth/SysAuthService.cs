@@ -1,4 +1,4 @@
-﻿// Admin.NET 项目的版权、商标、专利和其他相关权利均受相应法律法规的保护。使用本项目应遵守相关法律法规和许可证的要求。
+// Admin.NET 项目的版权、商标、专利和其他相关权利均受相应法律法规的保护。使用本项目应遵守相关法律法规和许可证的要求。
 //
 // 本项目主要遵循 MIT 许可证和 Apache 许可证（版本 2.0）进行分发和使用。许可证位于源代码树根目录中的 LICENSE-MIT 和 LICENSE-APACHE 文件。
 //
@@ -21,6 +21,7 @@ public class SysAuthService : IDynamicApiController, ITransient
     private readonly SysConfigService _sysConfigService;
     private readonly SysCacheService _sysCacheService;
     private readonly SysTenantService _sysTenantService;
+    private readonly SysTotpService _sysTotpService;
 
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly ICaptcha _captcha;
@@ -31,6 +32,7 @@ public class SysAuthService : IDynamicApiController, ITransient
         SysConfigService sysConfigService,
         SysCacheService sysCacheService,
         SysTenantService sysTenantService,
+        SysTotpService sysTotpService,
         IHttpContextAccessor httpContextAccessor,
         ICaptcha captcha,
         IEventPublisher eventPublisher)
@@ -40,6 +42,7 @@ public class SysAuthService : IDynamicApiController, ITransient
         _sysConfigService = sysConfigService;
         _sysCacheService = sysCacheService;
         _sysTenantService = sysTenantService;
+        _sysTotpService = sysTotpService;
         _httpContextAccessor = httpContextAccessor;
         _captcha = captcha;
         _eventPublisher = eventPublisher;
@@ -97,7 +100,7 @@ public class SysAuthService : IDynamicApiController, ITransient
         // 登录成功则清空密码错误次数
         _sysCacheService.Remove(keyPasswordErrorTimes);
 
-        return await CreateToken(user);
+        return await CompleteTotpOrChallenge(user, input.TotpCode);
     }
 
     /// <summary>
@@ -230,8 +233,155 @@ public class SysAuthService : IDynamicApiController, ITransient
         // 获取并验证账号
         var user = await GetLoginUser(input.TenantId, phone: input.Phone);
 
+        return await CompleteTotpOrChallenge(user, input.TotpCode);
+    }
+
+    /// <summary>
+    /// 获取 TOTP 绑定二维码（持登录中间票）🔖
+    /// </summary>
+    [AllowAnonymous]
+    [DisplayName("TOTP绑定二维码")]
+    public async Task<TotpSetupOutput> TotpSetup([Required] TotpTicketInput input)
+    {
+        var userId = _sysTotpService.RequireUserId(input.TotpTicket);
+        var user = await _sysUserRep.GetByIdAsync(userId) ?? throw Oops.Oh(ErrorCodeEnum.D0009);
+        if (user.TotpEnabled)
+            throw Oops.Bah("该账号已绑定动态口令，请直接输入验证码");
+
+        var secret = _sysTotpService.GetOrCreateSetupSecret(input.TotpTicket);
+        var url = _sysTotpService.BuildOtpAuthUrl(user.Account, secret);
+        return new TotpSetupOutput
+        {
+            Account = user.Account,
+            ManualKey = secret,
+            QrCodeImage = _sysTotpService.BuildQrPngBase64(url),
+            Issuer = SysTotpService.Issuer
+        };
+    }
+
+    /// <summary>
+    /// 确认 TOTP 绑定（扫码后输入首个 6 位码）🔖
+    /// </summary>
+    [AllowAnonymous]
+    [DisplayName("确认TOTP绑定")]
+    public async Task<LoginOutput> TotpConfirmSetup([Required] TotpCodeInput input)
+    {
+        var maxTimes = await _sysConfigService.GetConfigValueByCode<int>(ConfigConst.SysPasswordMaxErrorTimes);
+        _sysTotpService.EnsureNotLocked(input.TotpTicket, maxTimes);
+
+        var userId = _sysTotpService.RequireUserId(input.TotpTicket);
+        var user = await _sysUserRep.AsQueryable().Includes(u => u.SysOrg).FirstAsync(u => u.Id == userId)
+            ?? throw Oops.Oh(ErrorCodeEnum.D0009);
+        if (user.TotpEnabled)
+            throw Oops.Bah("该账号已绑定动态口令");
+
+        var setupSecret = _sysCacheService.Get<string>($"{CacheConst.KeyTotpSetupSecret}{input.TotpTicket}");
+        if (string.IsNullOrWhiteSpace(setupSecret))
+            throw Oops.Bah("请先获取绑定二维码");
+
+        if (!_sysTotpService.VerifyCode(setupSecret, input.Code))
+        {
+            _sysTotpService.RecordError(input.TotpTicket);
+            throw Oops.Bah("动态码不正确");
+        }
+
+        user.TotpSecret = _sysTotpService.EncryptSecret(setupSecret);
+        user.TotpEnabled = true;
+        await _sysUserRep.AsUpdateable(user).UpdateColumns(u => new { u.TotpSecret, u.TotpEnabled }).ExecuteCommandAsync();
+
+        _sysTotpService.ClearError(input.TotpTicket);
+        _sysTotpService.RemoveTicket(input.TotpTicket);
         return await CreateToken(user);
     }
+
+    /// <summary>
+    /// 登录 TOTP 验码 🔖
+    /// </summary>
+    [AllowAnonymous]
+    [DisplayName("TOTP验码登录")]
+    public async Task<LoginOutput> TotpVerify([Required] TotpCodeInput input)
+    {
+        var maxTimes = await _sysConfigService.GetConfigValueByCode<int>(ConfigConst.SysPasswordMaxErrorTimes);
+        _sysTotpService.EnsureNotLocked(input.TotpTicket, maxTimes);
+
+        var userId = _sysTotpService.RequireUserId(input.TotpTicket);
+        var user = await _sysUserRep.AsQueryable().Includes(u => u.SysOrg).FirstAsync(u => u.Id == userId)
+            ?? throw Oops.Oh(ErrorCodeEnum.D0009);
+        if (!user.TotpEnabled || string.IsNullOrWhiteSpace(user.TotpSecret))
+            throw Oops.Bah("该账号尚未绑定动态口令");
+
+        string plain;
+        try
+        {
+            plain = _sysTotpService.DecryptSecret(user.TotpSecret);
+        }
+        catch
+        {
+            throw Oops.Bah("动态口令数据异常，请联系管理员重置");
+        }
+
+        if (!_sysTotpService.VerifyCode(plain, input.Code))
+        {
+            _sysTotpService.RecordError(input.TotpTicket);
+            throw Oops.Bah("动态码不正确");
+        }
+
+        _sysTotpService.ClearError(input.TotpTicket);
+        _sysTotpService.RemoveTicket(input.TotpTicket);
+        return await CreateToken(user);
+    }
+
+    /// <summary>
+    /// 密码/短信校验通过后：
+    /// - 未绑定 → 发票走 Setup；
+    /// - 已绑定且带了动态码 → 同屏验码发 JWT；
+    /// - 已绑定未带码 → 发票走 Verify（前端聚焦验码框）。
+    /// </summary>
+    [NonAction]
+    public async Task<LoginOutput> CompleteTotpOrChallenge(SysUser user, string totpCode)
+    {
+        if (!user.TotpEnabled)
+        {
+            return new LoginOutput
+            {
+                NeedTotpSetup = true,
+                TotpTicket = _sysTotpService.IssueTicket(user.Id)
+            };
+        }
+
+        var code = (totpCode ?? "").Trim();
+        if (string.IsNullOrEmpty(code))
+        {
+            return new LoginOutput
+            {
+                NeedTotpVerify = true,
+                TotpTicket = _sysTotpService.IssueTicket(user.Id)
+            };
+        }
+
+        if (string.IsNullOrWhiteSpace(user.TotpSecret))
+            throw Oops.Bah("动态口令数据异常，请联系管理员重置");
+
+        string plain;
+        try
+        {
+            plain = _sysTotpService.DecryptSecret(user.TotpSecret);
+        }
+        catch
+        {
+            throw Oops.Bah("动态口令数据异常，请联系管理员重置");
+        }
+
+        if (!_sysTotpService.VerifyCode(plain, code))
+            throw Oops.Bah("动态码不正确");
+
+        return await CreateToken(user);
+    }
+
+    /// <summary>兼容旧调用：仅发挑战票</summary>
+    [NonAction]
+    public LoginOutput BuildTotpChallenge(SysUser user)
+        => CompleteTotpOrChallenge(user, null).GetAwaiter().GetResult();
 
     /// <summary>
     /// 生成Token令牌 🔖

@@ -76,7 +76,7 @@ export const PayOrderApiAxiosParamCreator = function (configuration?: Configurat
             };
         },
         /**
-         * 一次给全三张表：订单当前状态 + 事件流水（谁在什么时候把它推到了哪个状态）+ 每次到账明细。
+         * 一次返回：订单当前状态 + 事件流水 + 商户 Webhook 派发记录（旧入站 notify 仅兼容）。
          * @summary 获取收款订单详情（F7.1 全生命周期）
          * @param {number} id 主键Id
          * @param {*} [options] Override http request option.
@@ -243,7 +243,7 @@ export const PayOrderApiFp = function(configuration?: Configuration) {
             };
         },
         /**
-         * 一次给全三张表：订单当前状态 + 事件流水（谁在什么时候把它推到了哪个状态）+ 每次到账明细。
+         * 一次返回：订单当前状态 + 事件流水 + 商户 Webhook 派发记录（旧入站 notify 仅兼容）。
          * @summary 获取收款订单详情（F7.1 全生命周期）
          * @param {number} id 主键Id
          * @param {*} [options] Override http request option.
@@ -303,7 +303,7 @@ export const PayOrderApiFactory = function (configuration?: Configuration, baseP
             return PayOrderApiFp(configuration).apiPayOrderDetailByNoPost(orderNo, options).then((request) => request(axios, basePath));
         },
         /**
-         * 一次给全三张表：订单当前状态 + 事件流水（谁在什么时候把它推到了哪个状态）+ 每次到账明细。
+         * 一次返回：订单当前状态 + 事件流水 + 商户 Webhook 派发记录（旧入站 notify 仅兼容）。
          * @summary 获取收款订单详情（F7.1 全生命周期）
          * @param {number} id 主键Id
          * @param {*} [options] Override http request option.
@@ -353,7 +353,7 @@ export class PayOrderApi extends BaseAPI {
         return PayOrderApiFp(this.configuration).apiPayOrderDetailByNoPost(orderNo, options).then((request) => request(this.axios, this.basePath));
     }
     /**
-     * 一次给全三张表：订单当前状态 + 事件流水（谁在什么时候把它推到了哪个状态）+ 每次到账明细。
+     * 一次返回：订单当前状态 + 事件流水 + 商户 Webhook 派发记录（旧入站 notify 仅兼容）。
      * @summary 获取收款订单详情（F7.1 全生命周期）
      * @param {number} id 主键Id
      * @param {*} [options] Override http request option.
@@ -408,6 +408,50 @@ export class PayOrderApi extends BaseAPI {
     }
 
     /**
+     * 人工重发订单终态 Webhook
+     * @memberof PayOrderApi
+     */
+    public async apiPayOrderResendWebhookPost(body: { id: number }, options?: AxiosRequestConfig): Promise<AxiosResponse<any>> {
+        const localVarPath = `/api/payOrder/resendWebhook`;
+        const headers: any = { 'Content-Type': 'application/json-patch+json' };
+        if (this.configuration?.accessToken) {
+            const accessToken = typeof this.configuration.accessToken === 'function'
+                ? await this.configuration.accessToken()
+                : await this.configuration.accessToken;
+            headers['Authorization'] = 'Bearer ' + accessToken;
+        }
+        return this.axios.request({
+            url: (this.basePath || '') + localVarPath,
+            method: 'POST',
+            headers: { ...headers, ...(options?.headers || {}) },
+            data: body,
+            ...options,
+        });
+    }
+
+    /**
+     * 运营确认未到账（置已过期并通知商户）
+     * @memberof PayOrderApi
+     */
+    public async apiPayOrderMarkUnpaidPost(body: { id: number; remark?: string | null }, options?: AxiosRequestConfig): Promise<AxiosResponse<any>> {
+        const localVarPath = `/api/payOrder/markUnpaid`;
+        const headers: any = { 'Content-Type': 'application/json-patch+json' };
+        if (this.configuration?.accessToken) {
+            const accessToken = typeof this.configuration.accessToken === 'function'
+                ? await this.configuration.accessToken()
+                : await this.configuration.accessToken;
+            headers['Authorization'] = 'Bearer ' + accessToken;
+        }
+        return this.axios.request({
+            url: (this.basePath || '') + localVarPath,
+            method: 'POST',
+            headers: { ...headers, ...(options?.headers || {}) },
+            data: body,
+            ...options,
+        });
+    }
+
+    /**
      * 上传到账水单
      * @memberof PayOrderApi
      */
@@ -427,6 +471,72 @@ export class PayOrderApi extends BaseAPI {
             method: 'POST',
             headers: { ...headers, ...(options?.headers || {}) },
             data: localVarFormParams,
+            ...options,
+        });
+    }
+
+    /**
+     * 查询到账提示音地址
+     * @memberof PayOrderApi
+     */
+    public async apiPayOrderGetAlertSoundGet(options?: AxiosRequestConfig): Promise<AxiosResponse<{ result?: string }>> {
+        const localVarPath = `/api/payOrder/getAlertSound`;
+        const headers: any = {};
+        if (this.configuration?.accessToken) {
+            const accessToken = typeof this.configuration.accessToken === 'function'
+                ? await this.configuration.accessToken()
+                : await this.configuration.accessToken;
+            headers['Authorization'] = 'Bearer ' + accessToken;
+        }
+        return this.axios.request({
+            url: (this.basePath || '') + localVarPath,
+            method: 'GET',
+            headers: { ...headers, ...(options?.headers || {}) },
+            ...options,
+        });
+    }
+
+    /**
+     * 上传到账提示音
+     * @memberof PayOrderApi
+     */
+    public async apiPayOrderUploadAlertSoundPostForm(file?: Blob, options?: AxiosRequestConfig): Promise<AxiosResponse<{ result?: string }>> {
+        const localVarPath = `/api/payOrder/uploadAlertSound`;
+        const localVarFormParams = new FormData();
+        if (file !== undefined) localVarFormParams.append('file', file as any);
+        const headers: any = { 'Content-Type': 'multipart/form-data' };
+        if (this.configuration?.accessToken) {
+            const accessToken = typeof this.configuration.accessToken === 'function'
+                ? await this.configuration.accessToken()
+                : await this.configuration.accessToken;
+            headers['Authorization'] = 'Bearer ' + accessToken;
+        }
+        return this.axios.request({
+            url: (this.basePath || '') + localVarPath,
+            method: 'POST',
+            headers: { ...headers, ...(options?.headers || {}) },
+            data: localVarFormParams,
+            ...options,
+        });
+    }
+
+    /**
+     * 清空到账提示音
+     * @memberof PayOrderApi
+     */
+    public async apiPayOrderClearAlertSoundPost(options?: AxiosRequestConfig): Promise<AxiosResponse<any>> {
+        const localVarPath = `/api/payOrder/clearAlertSound`;
+        const headers: any = {};
+        if (this.configuration?.accessToken) {
+            const accessToken = typeof this.configuration.accessToken === 'function'
+                ? await this.configuration.accessToken()
+                : await this.configuration.accessToken;
+            headers['Authorization'] = 'Bearer ' + accessToken;
+        }
+        return this.axios.request({
+            url: (this.basePath || '') + localVarPath,
+            method: 'POST',
+            headers: { ...headers, ...(options?.headers || {}) },
             ...options,
         });
     }

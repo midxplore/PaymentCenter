@@ -104,17 +104,16 @@ public class PayAllocateFlowTest : IDisposable
         // 订单号格式来自 PayOrderNoGenerator = {yyyyMMddHHmmssfff}{雪花Id}
         // （纯数字、日期前置，便于三方查账），形如 20260917002812345849000000000000
         Assert.Matches(new Regex(@"^\d{32,40}$"), output.OrderNo);
-        Assert.Equal(TestType, output.Type);
-        Assert.Equal("unittest-account-info", output.AccountInfo);
-        Assert.Equal(40m, output.RequestAmount);
-        Assert.False(output.IdempotentHit);
-        Assert.True(output.ExpireTime > DateTime.Now);
+        Assert.False(string.IsNullOrWhiteSpace(output.CashierUrl));
+        Assert.Contains("/#/c/", output.CashierUrl);
 
         // 落库核对
         var order = _db.Queryable<PayOrder>().First(u => u.OrderNo == output.OrderNo);
         Assert.Equal(accountId, order.AccountId);
         Assert.Equal(PayOrderStatusEnum.Pending, order.Status);
         Assert.Equal(0m, order.ReceivedAmount);
+        Assert.False(string.IsNullOrWhiteSpace(order.CashierToken));
+        Assert.Contains(order.CashierToken, output.CashierUrl);
 
         // 额度已预占（锁定 40），已用仍为 0
         var account = _db.Queryable<PayAccount>().First(u => u.Id == accountId);
@@ -137,8 +136,7 @@ public class PayAllocateFlowTest : IDisposable
         var second = await _allocateService.Allocate(BuildInput(30m, externalNo));
 
         Assert.Equal(first.OrderNo, second.OrderNo);
-        Assert.False(first.IdempotentHit);
-        Assert.True(second.IdempotentHit);
+        Assert.Equal(first.CashierUrl, second.CashierUrl);
 
         // 只落一笔订单、只占一次额度
         Assert.Equal(1, _db.Queryable<PayOrder>().Count(u => u.ExternalNo == externalNo));

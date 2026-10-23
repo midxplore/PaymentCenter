@@ -13,7 +13,7 @@
  */
 
 /**
- * 收款订单状态枚举<br />&nbsp;待到账 Pending = 1<br />&nbsp;部分到账 Partial = 2<br />&nbsp;已完成 Completed = 3<br />&nbsp;已过期 Expired = 4<br />
+ * 收款订单状态枚举<br />&nbsp;待到账 Pending = 1<br />&nbsp;部分到账 Partial = 2<br />&nbsp;已完成 Completed = 3<br />&nbsp;已过期 Expired = 4<br />&nbsp;等待确认 AwaitingConfirm = 5<br />&nbsp;未到账 Failed = 6<br />
  * @export
  * @enum {string}
  */
@@ -21,6 +21,8 @@ export enum PayOrderStatusEnum {
     NUMBER_1 = 1,
     NUMBER_2 = 2,
     NUMBER_3 = 3,
-    NUMBER_4 = 4
+    NUMBER_4 = 4,
+    NUMBER_5 = 5,
+    NUMBER_6 = 6
 }
 

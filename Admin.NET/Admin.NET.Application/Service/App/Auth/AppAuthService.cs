@@ -1,4 +1,4 @@
-﻿// Admin.NET 项目的版权、商标、专利和其他相关权利均受相应法律法规的保护。使用本项目应遵守相关法律法规和许可证的要求。
+// Admin.NET 项目的版权、商标、专利和其他相关权利均受相应法律法规的保护。使用本项目应遵守相关法律法规和许可证的要求。
 //
 // 本项目主要遵循 MIT 许可证和 Apache 许可证（版本 2.0）进行分发和使用。许可证位于源代码树根目录中的 LICENSE-MIT 和 LICENSE-APACHE 文件。
 //
@@ -105,7 +105,7 @@ public class AppAuthService : IDynamicApiController, ITransient
         // 登录成功则清空密码错误次数
         _sysCacheService.Remove(keyPasswordErrorTimes);
 
-        return await CreateToken(user);
+        return await Furion.App.GetRequiredService<SysAuthService>().CompleteTotpOrChallenge(user, input.TotpCode);
     }
 
     /// <summary>
@@ -154,7 +154,7 @@ public class AppAuthService : IDynamicApiController, ITransient
         var user = await _sysUserRep.AsQueryable().Includes(u => u.SysOrg).ClearFilter<ITenantIdFilter>().FirstAsync(u => u.Phone.Equals(input.Phone));
         _ = user ?? throw Oops.Oh(ErrorCodeEnum.D0009);
 
-        return await CreateToken(user);
+        return await Furion.App.GetRequiredService<SysAuthService>().CompleteTotpOrChallenge(user, input.TotpCode);
     }
 
     /// <summary>
@@ -296,6 +296,8 @@ public class AppAuthService : IDynamicApiController, ITransient
             if (CryptogramHelper.Decrypt(user.Password) != input.PasswordOld)
                 throw Oops.Oh(ErrorCodeEnum.D1004);
         }
+
+        Furion.App.GetRequiredService<SysTotpService>().EnsureTotp(user, input.TotpCode);
 
         if (input.PasswordOld == input.PasswordNew)
             throw Oops.Oh(ErrorCodeEnum.D1028);

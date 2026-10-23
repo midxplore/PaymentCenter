@@ -160,6 +160,7 @@ public class PayAuditService : IDynamicApiController, ITransient
             .WhereIF(input.TargetId.HasValue, u => u.TargetId == input.TargetId.Value)
             .WhereIF(!string.IsNullOrWhiteSpace(input.TargetNo), u => u.TargetNo.Contains(input.TargetNo))
             .WhereIF(!string.IsNullOrWhiteSpace(input.OperatorName), u => u.OperatorName.Contains(input.OperatorName))
+            .WhereIF(!string.IsNullOrWhiteSpace(input.ClientKey), u => u.ClientKey.Contains(input.ClientKey.Trim()))
             .WhereIF(input.StartTime.HasValue, u => u.CreateTime >= input.StartTime.Value)
             .WhereIF(input.EndTime.HasValue, u => u.CreateTime <= input.EndTime.Value)
             .OrderBy(u => u.CreateTime, OrderByType.Desc)

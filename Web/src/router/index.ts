@@ -120,8 +120,13 @@ router.beforeEach(async (to, from, next) => {
 	routeStores.setCurrentRoute(to as unknown as RouteItem); // 记录最新当前路由对象
 	if (to.meta.title) NProgress.start();
 	const token = Session.get('token');
-	if (to.meta.isPublic && !token) {
-		next();
+	// 公开页（登录 / 收银台）不走鉴权；已登录访问 /login 仍回首页
+	if (to.meta.isPublic) {
+		if (token && to.path === '/login') {
+			next('/');
+		} else {
+			next();
+		}
 		NProgress.done();
 	} else {
 		if (!token) {
@@ -131,9 +136,6 @@ router.beforeEach(async (to, from, next) => {
 			if (!isNaN(tenantid) && tenantid > 99999) routeLocation += `&tid=${tenantid}`;
 			next(routeLocation);
 			Session.clear();
-			NProgress.done();
-		} else if (token && to.path === '/login') {
-			next('/');
 			NProgress.done();
 		} else {
 			const storesRoutesList = useRoutesList(pinia);

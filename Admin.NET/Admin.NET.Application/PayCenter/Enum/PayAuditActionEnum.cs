@@ -25,9 +25,9 @@ public enum PayAuditActionEnum
     AccountUpdate = 2,
 
     /// <summary>
-    /// 追加额度（F1.2）
+    /// 额度调整（增加 / 减少总额度）
     /// </summary>
-    [Description("追加额度")]
+    [Description("额度调整")]
     QuotaAdd = 3,
 
     /// <summary>
@@ -105,5 +105,17 @@ public enum PayAuditActionEnum
     /// 平台人工确认到账（水单 + 结清）
     /// </summary>
     [Description("确认到账")]
-    ConfirmReceived = 10
+    ConfirmReceived = 10,
+
+    /// <summary>
+    /// 人工重发商户 Webhook（终态订单）
+    /// </summary>
+    [Description("重发商户通知")]
+    ResendWebhook = 11,
+
+    /// <summary>
+    /// 运营确认未到账（订单置已过期并释放预占/占用）
+    /// </summary>
+    [Description("确认未到账")]
+    MarkUnpaid = 12
 }

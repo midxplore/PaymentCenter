@@ -3,8 +3,8 @@
 
   "Upload": {
     "Path": "upload/{yyyy}/{MM}/{dd}", // 文件上传目录
-    "MaxSize": 51200, // 文件最大限制KB：1024*50
-    "ContentType": [ "image/jpg", "image/png", "image/jpeg", "image/gif", "image/bmp", "image/webp", "image/svg+xml", "text/plain", "text/xml", "application/pdf", "application/msword", "application/vnd.ms-excel", "application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "video/mp4", "application/wps-office.docx", "application/wps-office.xlsx", "application/wps-office.pptx", "application/vnd.android.package-archive", "application/octet-stream" ],
+    "MaxSize": 8192, // 文件最大限制KB：与 nginx client_max_body_size 8m 对齐
+    "ContentType": [ "image/jpg", "image/png", "image/jpeg", "image/gif", "image/bmp", "image/webp", "application/pdf", "application/msword", "application/vnd.ms-excel", "application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "video/mp4", "audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/wave", "audio/ogg", "audio/webm", "audio/mp4", "audio/x-m4a", "audio/aac", "application/wps-office.docx", "application/wps-office.xlsx", "application/wps-office.pptx", "application/octet-stream" ],
     "EnableMd5": false, // 启用文件MDF5验证-防止重复上传
     "EnableSaveDb": false // 启用文件存储到数据库
   },

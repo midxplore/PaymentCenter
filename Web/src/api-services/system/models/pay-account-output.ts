@@ -38,6 +38,38 @@ export interface PayAccountOutput {
     type?: string | null;
 
     /**
+     * 卖家姓名
+     *
+     * @type {string}
+     * @memberof PayAccountOutput
+     */
+    payeeName?: string | null;
+
+    /**
+     * 收款账号号
+     *
+     * @type {string}
+     * @memberof PayAccountOutput
+     */
+    accountNo?: string | null;
+
+    /**
+     * 开户银行
+     *
+     * @type {string}
+     * @memberof PayAccountOutput
+     */
+    bankName?: string | null;
+
+    /**
+     * 支行
+     *
+     * @type {string}
+     * @memberof PayAccountOutput
+     */
+    branchName?: string | null;
+
+    /**
      * 账号信息（前后台均不脱敏，见设计决策）
      *
      * @type {string}
@@ -98,6 +130,30 @@ export interface PayAccountOutput {
      * @memberof PayAccountOutput
      */
     statusText?: string | null;
+
+    /**
+     * 账号分层（1普通 / 2大额）
+     *
+     * @type {number}
+     * @memberof PayAccountOutput
+     */
+    accountTier?: number;
+
+    /**
+     * 账号分层文案
+     *
+     * @type {string}
+     * @memberof PayAccountOutput
+     */
+    accountTierText?: string | null;
+
+    /**
+     * 匹配最小金额（0=不限制）
+     *
+     * @type {number}
+     * @memberof PayAccountOutput
+     */
+    minAmount?: number;
 
     /**
      * 备注

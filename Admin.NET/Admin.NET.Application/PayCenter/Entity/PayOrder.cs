@@ -18,6 +18,7 @@ namespace Admin.NET.Application;
 [SugarIndex("u_{table}_ce", nameof(ClientId), OrderByType.Asc, nameof(ExternalNo), OrderByType.Asc, IsUnique = true)]
 [SugarIndex("i_{table}_aid", nameof(AccountId), OrderByType.Asc)]
 [SugarIndex("i_{table}_se", nameof(Status), OrderByType.Asc, nameof(ExpireTime), OrderByType.Asc)]
+[SugarIndex("u_{table}_ctoken", nameof(CashierToken), OrderByType.Asc, IsUnique = true)]
 public class PayOrder : EntityBase
 {
     /// <summary>
@@ -113,9 +114,37 @@ public class PayOrder : EntityBase
     public virtual long? ClientId { get; set; }
 
     /// <summary>
-    /// 平台确认到账时上传的水单路径（根相对路径）
+    /// 平台确认到账时上传的水单路径（根相对路径；多凭证时取首张兼容）
     /// </summary>
     [SugarColumn(ColumnDescription = "水单路径", Length = 512, IsNullable = true)]
     [MaxLength(512)]
     public virtual string VoucherUrl { get; set; }
+
+    /// <summary>
+    /// 收银台访问 token（高熵，唯一）
+    /// </summary>
+    [SugarColumn(ColumnDescription = "收银台Token", Length = PayConst.CashierTokenLength, IsNullable = true)]
+    [MaxLength(PayConst.CashierTokenLength)]
+    public virtual string CashierToken { get; set; }
+
+    /// <summary>
+    /// 收银台上传的凭证路径 JSON 数组（最多 3 条）
+    /// </summary>
+    [SugarColumn(ColumnDescription = "凭证列表JSON", Length = PayConst.VoucherUrlsLength, IsNullable = true)]
+    [MaxLength(PayConst.VoucherUrlsLength)]
+    public virtual string VoucherUrls { get; set; }
+
+    /// <summary>
+    /// 收银台「返回」跳转地址（第三方传入；仅 http/https；空则关页/通知父窗）
+    /// </summary>
+    [SugarColumn(ColumnDescription = "返回地址", Length = PayConst.ReturnUrlLength, IsNullable = true)]
+    [MaxLength(PayConst.ReturnUrlLength)]
+    public virtual string ReturnUrl { get; set; }
+
+    /// <summary>
+    /// 收银台「返回」按钮文案（空则前端默认「返回」）
+    /// </summary>
+    [SugarColumn(ColumnDescription = "返回按钮文案", Length = PayConst.ReturnLabelLength, IsNullable = true)]
+    [MaxLength(PayConst.ReturnLabelLength)]
+    public virtual string ReturnLabel { get; set; }
 }

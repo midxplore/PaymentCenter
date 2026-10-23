@@ -18,7 +18,7 @@ namespace Admin.NET.Test.PayCenter;
 /// <list type="bullet">
 /// <item>订单维度：按订单号 / 外部单号 / 状态 / 时间过滤；</item>
 /// <item>账号维度（F7.2）：传 <c>AccountId</c> 看该账号名下订单明细；</item>
-/// <item>详情必须一次给全三张表（订单 + 事件流水 + 到账明细）；</item>
+/// <item>详情必须一次给全：订单 + 事件流水 + 商户 Webhook；旧入站 notify 兼容保留；</item>
 /// <item><c>Page</c> 与 <c>Detail</c> 的状态文本 / 未达成金额必须同口径
 /// （这两处各写一遍必然随时间漂移，所以实现里收敛到了同一个方法）。</item>
 /// </list>
@@ -39,6 +39,9 @@ public class PayOrderQueryTest : IDisposable
     /// <summary>本类专用凭证号前缀</summary>
     private const string VoucherPrefix = "UTOQ-V-";
 
+    /// <summary>本类专用 Webhook eventId 前缀</summary>
+    private const string WebhookEventPrefix = "UTOQ-WH-";
+
     private readonly ISqlSugarClient _db;
     private readonly PayOrderService _orderService;
 
@@ -55,13 +58,15 @@ public class PayOrderQueryTest : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    /// <summary>硬删除本类造数（事件/通知 → 订单 → 账号，顺序不能颠倒）</summary>
+    /// <summary>硬删除本类造数（事件/通知/webhook → 订单 → 账号，顺序不能颠倒）</summary>
     private void Cleanup()
     {
         _db.Ado.ExecuteCommand("delete from pay_order_event where orderno like @prefix",
             new SugarParameter("@prefix", OrderNoPrefix + "%"));
         _db.Ado.ExecuteCommand("delete from pay_notify_record where voucherno like @prefix",
             new SugarParameter("@prefix", VoucherPrefix + "%"));
+        _db.Ado.ExecuteCommand("delete from pay_webhook_outbox where eventid like @prefix",
+            new SugarParameter("@prefix", WebhookEventPrefix + "%"));
         _db.Ado.ExecuteCommand("delete from pay_order where orderno like @prefix",
             new SugarParameter("@prefix", OrderNoPrefix + "%"));
         _db.Ado.ExecuteCommand("delete from pay_account where type = @type",
@@ -127,6 +132,24 @@ public class PayOrderQueryTest : IDisposable
             VoucherNo = voucherNo,
             ClientId = 0,
             Applied = applied
+        }).ExecuteCommand();
+    }
+
+    private void SeedWebhook(PayOrder order, string eventSuffix, PayWebhookStatusEnum status,
+        string lastError = null)
+    {
+        _db.Insertable(new PayWebhookOutbox
+        {
+            EventId = WebhookEventPrefix + eventSuffix,
+            EventType = "OrderResult",
+            OrderId = order.Id,
+            OrderNo = order.OrderNo,
+            ClientId = order.ClientId ?? 0,
+            WebhookUrl = "https://merchant.example/webhook",
+            Payload = "{\"status\":\"Completed\"}",
+            Status = status,
+            AttemptCount = status == PayWebhookStatusEnum.Pending ? 0 : 1,
+            LastError = lastError
         }).ExecuteCommand();
     }
 
@@ -230,7 +253,7 @@ public class PayOrderQueryTest : IDisposable
     }
 
     [Fact]
-    public async Task 详情_应一次返回订单与事件流水与到账明细()
+    public async Task 详情_应一次返回订单与事件流水与商户通知()
     {
         var accountId = SeedAccount();
         var order = SeedOrder(accountId, "D001", 100m, 60m, PayOrderStatusEnum.Partial);
@@ -238,6 +261,8 @@ public class PayOrderQueryTest : IDisposable
         SeedEvent(order, PayEventTypeEnum.PartialReceived, PayOrderStatusEnum.Pending,
             PayOrderStatusEnum.Partial, 60m, 60m, "部分到账 60.00");
         SeedNotify(order, 60m, VoucherPrefix + "001", true);
+        SeedWebhook(order, "D001-ok", PayWebhookStatusEnum.Success);
+        SeedWebhook(order, "D001-fail", PayWebhookStatusEnum.Dead, "HTTP 500");
 
         var detail = await _orderService.Detail(new BaseIdInput { Id = order.Id });
 
@@ -248,6 +273,11 @@ public class PayOrderQueryTest : IDisposable
         Assert.Equal(PayEventTypeEnum.Created, detail.Events[0].EventType);
         Assert.Equal(PayEventTypeEnum.PartialReceived, detail.Events[1].EventType);
         Assert.Equal("部分到账", detail.Events[1].ToStatusText);
+        Assert.Equal(2, detail.WebhookRecords.Count);
+        Assert.All(detail.WebhookRecords, u => Assert.False(string.IsNullOrWhiteSpace(u.StatusText)));
+        Assert.Contains(detail.WebhookRecords, u => u.Status == PayWebhookStatusEnum.Success && u.StatusText == "成功");
+        Assert.Contains(detail.WebhookRecords, u => u.Status == PayWebhookStatusEnum.Dead && u.LastError == "HTTP 500");
+        // 旧入站仍兼容返回，供前端折叠展示
         Assert.Single(detail.NotifyRecords);
         Assert.Equal(VoucherPrefix + "001", detail.NotifyRecords[0].VoucherNo);
         Assert.True(detail.NotifyRecords[0].Applied);

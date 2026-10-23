@@ -68,9 +68,13 @@ public class PayOrderExpireService : IDynamicApiController, ITransient
 
         var now = DateTime.Now;
         var candidateIds = await _payOrderRep.AsQueryable()
-            .Where(u => (u.Status == PayOrderStatusEnum.Pending || u.Status == PayOrderStatusEnum.Partial)
+            .Where(u => (u.Status == PayOrderStatusEnum.Pending
+                        || u.Status == PayOrderStatusEnum.Partial
+                        || u.Status == PayOrderStatusEnum.Failed)
                         && u.ExpireTime <= now)
             // 先到期的先处理：积压时保证「最早的欠账」优先被清掉
+            // ★ AwaitingConfirm（已交凭证待后台确认）不自动过期，避免有凭证却无法确认
+            // ★ Failed（运营未到账）到期后转 Expired 并释放预占
             .OrderBy(u => u.ExpireTime, OrderByType.Asc)
             .Take(batchSize)
             .Select(u => u.Id)
@@ -119,7 +123,19 @@ public class PayOrderExpireService : IDynamicApiController, ITransient
         tenant.BeginTran();
         try
         {
-            // ── 步骤 1：条件抢占订单（与到账通知抢同一行）────────────────────
+            // ── 步骤 1：先读再抢占（记下 fromStatus；金额仍以抢占后重读为准）──
+            var before = await _payOrderRep.GetByIdAsync(orderId);
+            if (before == null
+                || before.ExpireTime > now
+                || (before.Status != PayOrderStatusEnum.Pending
+                    && before.Status != PayOrderStatusEnum.Partial
+                    && before.Status != PayOrderStatusEnum.Failed))
+            {
+                tenant.RollbackTran();
+                return false;
+            }
+            var fromStatus = before.Status;
+
             var claimed = await _payOrderRep.AsUpdateable()
                 .SetColumns(u => new PayOrder
                 {
@@ -127,13 +143,13 @@ public class PayOrderExpireService : IDynamicApiController, ITransient
                     UpdateTime = now
                 })
                 .Where(u => u.Id == orderId
-                    && (u.Status == PayOrderStatusEnum.Pending || u.Status == PayOrderStatusEnum.Partial)
+                    && u.Status == fromStatus
                     && u.ExpireTime <= now)
                 .ExecuteCommandAsync(cancellationToken);
 
             if (claimed == 0)
             {
-                // 已被到账通知推进到终态（或已被上一轮过期、或还没到期）→ 什么都不做
+                // 已被到账通知推进到终态（或已被上一轮过期、或还没到期、或等待确认）→ 什么都不做
                 tenant.RollbackTran();
                 return false;
             }
@@ -146,11 +162,6 @@ public class PayOrderExpireService : IDynamicApiController, ITransient
                 return false;
             }
 
-            // 抢占条件已保证变更前状态 ∈ {待到账, 部分到账}；
-            // 到账金额 > 0 即说明此前收到过部分到账，据此还原「变更前状态」写进流水
-            var fromStatus = order.ReceivedAmount > 0m
-                ? PayOrderStatusEnum.Partial
-                : PayOrderStatusEnum.Pending;
             var released = order.RequestAmount - order.ReceivedAmount;
 
             // ── 步骤 3：额度结转 ────────────────────────────────────────────
@@ -166,9 +177,9 @@ public class PayOrderExpireService : IDynamicApiController, ITransient
                 .Where(u => u.Id == order.AccountId && u.LockedQuota >= order.RequestAmount)
                 .ExecuteCommandAsync(cancellationToken);
 
-            // 释放预占后：额度结转完成。账号若处于「占用中」保持不动，须管理员启用才再匹配。
-            // SyncStatusByQuota 只处理 Enabled⇄Exhausted，不会误把 InUse 刷回启用。
+            // 释放预占后同步 Enabled⇄Exhausted，并在无其它活跃单时解除占用中
             await _payAccountService.SyncStatusByQuotaAsync(order.AccountId);
+            await _payAccountService.ReleaseInUseIfIdleAsync(order.AccountId);
 
             // ── 步骤 4：事件流水（只增不改，F7.1）────────────────────────────
             await _payOrderEventRep.InsertAsync(new PayOrderEvent
@@ -200,10 +211,10 @@ public class PayOrderExpireService : IDynamicApiController, ITransient
                     .ExecuteCommandAsync(cancellationToken);
             }
 
-            // 终态 Webhook（无 URL 则跳过）
-            await _payWebhookService.EnqueueOrderResultAsync(order);
-
             tenant.CommitTran();
+
+            // ★ 入队放在提交后，避免 outbox 失败拖垮过期结转
+            await _payWebhookService.EnqueueOrderResultAsync(order);
             return true;
         }
         catch

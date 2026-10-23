@@ -78,6 +78,14 @@ const goToNotice = () => {
 };
 // 查看消息详情
 const viewNoticeDetail = async (notice: any) => {
+	// 收款到账实时提醒：跳转订单页，不走站内信已读接口
+	const payOrderNo = String(notice?._payOrderNo || '').trim();
+	if (payOrderNo || (typeof notice?.id === 'number' && notice.id < 0)) {
+		notice.readStatus = 1;
+		router.push({ path: '/paycenter/order', query: payOrderNo ? { orderNo: payOrderNo } : {} });
+		return;
+	}
+
 	// 仅详情弹窗需要富文本样式，按需加载（不删 wangeditor，首屏不带）
 	await import('@wangeditor/editor/dist/css/style.css');
 	state.content = notice.content;

@@ -60,7 +60,7 @@ public class PayMenuSeedData : ISqlSugarEntitySeedData<SysMenu>
             new SysMenu{ Id=1300000000214, Pid=1300000000211, Title="编辑", Permission="payAccount/update", Type=MenuTypeEnum.Btn, CreateTime=createTime, OrderNo=120 },
             new SysMenu{ Id=1300000000215, Pid=1300000000211, Title="删除", Permission="payAccount/delete", Type=MenuTypeEnum.Btn, CreateTime=createTime, OrderNo=130 },
             new SysMenu{ Id=1300000000216, Pid=1300000000211, Title="详情", Permission="payAccount/detail", Type=MenuTypeEnum.Btn, CreateTime=createTime, OrderNo=140 },
-            new SysMenu{ Id=1300000000217, Pid=1300000000211, Title="追加额度", Permission="payAccount/addQuota", Type=MenuTypeEnum.Btn, CreateTime=createTime, OrderNo=150 },
+            new SysMenu{ Id=1300000000217, Pid=1300000000211, Title="额度调整", Permission="payAccount/addQuota", Type=MenuTypeEnum.Btn, CreateTime=createTime, OrderNo=150 },
             new SysMenu{ Id=1300000000218, Pid=1300000000211, Title="设置状态", Permission="payAccount/setStatus", Type=MenuTypeEnum.Btn, CreateTime=createTime, OrderNo=160 },
             // ★ 下拉字典（账号类型）。**必须单独挂权限**：JwtHandler 是按 path.EndsWith(permission) 匹配的，
             //   "payAccount/page" 不会命中 "/api/payAccount/typeOptions"，所以不挂就等于对任何已登录用户放行。
@@ -84,6 +84,10 @@ public class PayMenuSeedData : ISqlSugarEntitySeedData<SysMenu>
             new SysMenu{ Id=1300000000227, Pid=1300000000221, Title="导出到账流水", Permission="payExport/exportNotify", Type=MenuTypeEnum.Btn, CreateTime=createTime, OrderNo=150 },
             new SysMenu{ Id=1300000000228, Pid=1300000000221, Title="确认到账", Permission="payOrder/confirmReceived", Type=MenuTypeEnum.Btn, CreateTime=createTime, OrderNo=160 },
             new SysMenu{ Id=1300000000229, Pid=1300000000221, Title="上传水单", Permission="payOrder/uploadVoucher", Type=MenuTypeEnum.Btn, CreateTime=createTime, OrderNo=170 },
+            new SysMenu{ Id=1300000000230, Pid=1300000000221, Title="重发商户通知", Permission="payOrder/resendWebhook", Type=MenuTypeEnum.Btn, CreateTime=createTime, OrderNo=180 },
+            new SysMenu{ Id=1300000000236, Pid=1300000000221, Title="确认未到账", Permission="payOrder/markUnpaid", Type=MenuTypeEnum.Btn, CreateTime=createTime, OrderNo=190 },
+            // 提示音仅读系统参数 pay_order_alert_sound_url（配置参数页维护），不提供上传入口
+            new SysMenu{ Id=1300000000237, Pid=1300000000221, Title="查询到账提示音", Permission="payOrder/getAlertSound", Type=MenuTypeEnum.Btn, CreateTime=createTime, OrderNo=200 },
 
             //// 异常到账台账（F5）
             new SysMenu{ Id=1300000000231, Pid=1300000000201, Title="异常到账", Path="/paycenter/abnormal", Name="payAbnormal", Component="/paycenter/abnormal/index", Icon="ele-WarningFilled", Type=MenuTypeEnum.Menu, CreateTime=createTime, OrderNo=120 },

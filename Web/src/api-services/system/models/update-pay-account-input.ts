@@ -30,6 +30,38 @@ export interface UpdatePayAccountInput {
     id: number;
 
     /**
+     * 卖家姓名
+     *
+     * @type {string}
+     * @memberof UpdatePayAccountInput
+     */
+    payeeName?: string | null;
+
+    /**
+     * 收款账号号
+     *
+     * @type {string}
+     * @memberof UpdatePayAccountInput
+     */
+    accountNo?: string | null;
+
+    /**
+     * 开户银行
+     *
+     * @type {string}
+     * @memberof UpdatePayAccountInput
+     */
+    bankName?: string | null;
+
+    /**
+     * 支行
+     *
+     * @type {string}
+     * @memberof UpdatePayAccountInput
+     */
+    branchName?: string | null;
+
+    /**
      * 账号信息。不传表示不修改；空字符串表示清除。与收款码至少填一个。
      *
      * @type {string}
@@ -58,4 +90,20 @@ export interface UpdatePayAccountInput {
      * @memberof UpdatePayAccountInput
      */
     status?: PayAccountStatusEnum;
+
+    /**
+     * 账号分层（1普通 / 2大额）
+     *
+     * @type {number}
+     * @memberof UpdatePayAccountInput
+     */
+    accountTier?: number | null;
+
+    /**
+     * 匹配最小金额（0=不限制）
+     *
+     * @type {number}
+     * @memberof UpdatePayAccountInput
+     */
+    minAmount?: number | null;
 }

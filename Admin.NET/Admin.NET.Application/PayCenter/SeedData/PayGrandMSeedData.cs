@@ -35,7 +35,7 @@ public class PayGrandMOrgSeedData : ISqlSugarEntitySeedData<SysOrg>
                 Code = "grandm",
                 Type = "301",
                 Level = 2,
-                Remark = "下游接入方样例机构（马上付联调）",
+                Remark = "下游接入方样例机构（PulsePay联调）",
                 CreateTime = DateTime.Parse("2026-09-22 00:00:00"),
                 TenantId = tenantId
             },

@@ -13,10 +13,8 @@ namespace Admin.NET.Application;
 /// </summary>
 public class AllocateInput
 {
-    // 金额字段用 decimal（服务端从 JSON 原文精确解析，无浮点损失）；
-    // 对外**写出**一律是十进制字符串，见 AllocateOutput.RequestAmount。
     /// <summary>
-    /// 收款类型（字典 pay_account_type 的 Value）
+    /// 收款类型（标准类型码，见对外文档）
     /// </summary>
     [Required(ErrorMessage = "收款类型不能为空")]
     [MaxLength(32, ErrorMessage = "收款类型长度不能超过32")]
@@ -24,8 +22,6 @@ public class AllocateInput
 
     /// <summary>
     /// 收款金额（必须大于 0；超精度拒绝）。
-    /// ★ 不挂 [Range]：DataAnnotations 失败会返回字段级 JSON（如 {"Amount":[...]}），
-    ///   绕过对外统一的 <c>API_AMOUNT_INVALID</c>。正数/精度校验在 <c>PayAllocateService</c>。
     /// </summary>
     public decimal Amount { get; set; }
 
@@ -35,9 +31,22 @@ public class AllocateInput
     [Required(ErrorMessage = "商家订单号不能为空")]
     [MaxLength(64, ErrorMessage = "商家订单号长度不能超过64")]
     public string ExternalNo { get; set; }
+
+    /// <summary>
+    /// 收银台「返回」跳转地址（可选；须为 http/https 绝对地址；空则付款人点返回时关页/通知父窗）
+    /// </summary>
+    [MaxLength(PayConst.ReturnUrlLength, ErrorMessage = "返回地址长度不能超过512")]
+    public string ReturnUrl { get; set; }
+
+    /// <summary>
+    /// 收银台「返回」按钮文案（可选；不传默认「返回」；最多 16 字）
+    /// </summary>
+    [MaxLength(PayConst.ReturnLabelLength, ErrorMessage = "返回按钮文案长度不能超过16")]
+    public string ReturnLabel { get; set; }
 }
+
 /// <summary>
-/// 查询匹配输出（F2）
+/// 查询匹配输出：仅订单号 + 收银台链接
 /// </summary>
 public class AllocateOutput
 {
@@ -47,33 +56,88 @@ public class AllocateOutput
     public string OrderNo { get; set; }
 
     /// <summary>
-    /// 收款类型
+    /// 收银台页面 URL（付款人打开此链接完成付款与凭证上传）
     /// </summary>
+    public string CashierUrl { get; set; }
+}
+
+/// <summary>
+/// 收银台展示输出（匿名 token 门禁）
+/// </summary>
+public class CashierOrderOutput
+{
+    public string OrderNo { get; set; }
+
     public string Type { get; set; }
 
-    /// <summary>
-    /// 收款账号 / 收款码文本。只上传了图片时为空字符串。
-    /// </summary>
-    public string AccountInfo { get; set; }
+    /// <summary>进度：1 确认付款 / 2 等待确认 / 3 确认收款</summary>
+    public int Step { get; set; }
 
-    /// <summary>
-    /// 收款码图片的根相对路径。无图时为空字符串。接入方用站点根地址拼接后展示。
-    /// </summary>
-    public string QrImageUrl { get; set; }
+    [JsonConverter(typeof(EnumNameConverter))]
+    public PayOrderStatusEnum Status { get; set; }
 
-    /// <summary>
-    /// 请求金额，写出为两位小数字符串
-    /// </summary>
+    public string StatusText { get; set; }
+
     [JsonConverter(typeof(AmountStringConverter))]
     public decimal RequestAmount { get; set; }
 
-    /// <summary>
-    /// 过期时间
-    /// </summary>
     public DateTime ExpireTime { get; set; }
 
-    /// <summary>
-    /// 是否命中幂等键（true 表示该 ExternalNo 已有订单，本次未重新匹配）
-    /// </summary>
-    public bool IdempotentHit { get; set; }
+    /// <summary>剩余秒数，已过期为 0</summary>
+    public int RemainSeconds { get; set; }
+
+    /// <summary>可发起「我已付款」主流程（待到账 / 未到账）</summary>
+    public bool CanPay { get; set; }
+
+    /// <summary>可取消订单（同 CanPay）</summary>
+    public bool CanCancel { get; set; }
+
+    /// <summary>可上传/重传凭证（待到账 / 未到账 / 等待确认）</summary>
+    public bool CanUpload { get; set; }
+
+    public string PayeeName { get; set; }
+
+    public string AccountNo { get; set; }
+
+    public string BankName { get; set; }
+
+    public string BranchName { get; set; }
+
+    public string QrImageUrl { get; set; }
+
+    public List<string> VoucherUrls { get; set; } = [];
+
+    /// <summary>付款提示（来自收款账号 Remark；空则前端不展示）</summary>
+    public string Notice { get; set; }
+
+    /// <summary>返回跳转地址（空则前端关页/通知父窗）</summary>
+    public string ReturnUrl { get; set; }
+
+    /// <summary>返回按钮文案（空则前端用「返回」）</summary>
+    public string ReturnLabel { get; set; }
+}
+
+/// <summary>
+/// 收银台确认提交。传 VoucherUrls 时在提交瞬间替换已落库凭证（重传防误操作）。
+/// </summary>
+public class CashierSubmitInput
+{
+    /// <summary>可选；1～3 条本单草稿上传 URL，提交时整体替换</summary>
+    public List<string> VoucherUrls { get; set; }
+}
+
+/// <summary>
+/// 收银台提交结果（凭证提交即到账；过期重传失败则进异常台账）
+/// </summary>
+public class CashierSubmitOutput
+{
+    /// <summary>Completed / Expired（异常待人工）</summary>
+    public string Status { get; set; }
+
+    public string StatusText { get; set; }
+
+    /// <summary>是否已自动到账并通知商户</summary>
+    public bool Paid { get; set; }
+
+    public string Message { get; set; }
 }

@@ -306,6 +306,21 @@ public partial class SysUser : EntityTenant
     public int TokenVersion { get; set; } = 1;
 
     /// <summary>
+    /// TOTP 密钥（加密存储；未绑定时为空）
+    /// </summary>
+    [SugarColumn(ColumnDescription = "TOTP密钥", Length = 512, IsNullable = true)]
+    [MaxLength(512)]
+    [Newtonsoft.Json.JsonIgnore]
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? TotpSecret { get; set; }
+
+    /// <summary>
+    /// 是否已启用 TOTP（全员强制绑定后为 true）
+    /// </summary>
+    [SugarColumn(ColumnDescription = "启用TOTP", DefaultValue = "false")]
+    public bool TotpEnabled { get; set; } = false;
+
+    /// <summary>
     /// 最新密码修改时间
     /// </summary>
     [SugarColumn(ColumnDescription = "最新密码修改时间")]

@@ -2,8 +2,8 @@
 	<el-config-provider :size="getGlobalComponentSize" :locale="getGlobalI18n">
 		<router-view v-show="setLockScreen" />
 		<LockScreen v-if="themeConfig.isLockScreen" />
-		<Settings ref="settingsRef" v-show="setLockScreen" />
-		<CloseFull v-if="!themeConfig.isLockScreen" />
+		<Settings ref="settingsRef" v-show="setLockScreen && !isPublicRoute" />
+		<CloseFull v-if="!themeConfig.isLockScreen && !isPublicRoute" />
 		<!-- <Upgrade v-if="needUpdate" /> -->
 		<!-- <Sponsors /> -->
 	</el-config-provider>
@@ -20,9 +20,10 @@ import other from '/@/utils/other';
 import { Local, Session } from '/@/utils/storage';
 import mittBus from '/@/utils/mitt';
 import setIntroduction from '/@/utils/setIconfont';
-// import Watermark from '/@/utils/watermark';
+import Watermark from '/@/utils/watermark';
 import { initIdleTimeout } from '/@/utils/idleTimeout';
 import { updateFavicon } from '/@/utils/sysInfo';
+import { initWebUpdateNoticeGate, isCashierLocation } from '/@/utils/webUpdateNoticeGate';
 
 // 引入组件
 const LockScreen = defineAsyncComponent(() => import('/@/layout/lockScreen/index.vue'));
@@ -46,6 +47,13 @@ const setLockScreen = computed(() => {
 	return themeConfig.value.isLockScreen ? themeConfig.value.lockScreenTime > 1 : themeConfig.value.lockScreenTime >= 0;
 });
 
+/** 公开页（登录 / 收银台）不挂后台布局配置与全屏控件 */
+const isPublicRoute = computed(() => !!route.meta?.isPublic);
+/** 收银台直面付款人，不弹「系统更新」 */
+const isCashierRoute = computed(() => route.name === 'payCashier' || /^\/c(\/|$)/.test(route.path));
+
+let disposeWebUpdateGate: (() => void) | undefined;
+
 // 获取全局组件大小
 const getGlobalComponentSize = computed(() => {
 	return themeConfig.value.globalComponentSize;
@@ -62,6 +70,8 @@ onBeforeMount(() => {
 	setIntroduction.cssCdn();
 	// 设置批量第三方 js
 	setIntroduction.jsCdn();
+	// 尽早挂上：插件可能在首屏就派发更新事件
+	disposeWebUpdateGate = initWebUpdateNoticeGate(() => isCashierRoute.value || isCashierLocation());
 });
 
 // 页面加载时
@@ -92,16 +102,24 @@ onMounted(() => {
 // 页面销毁时，关闭监听布局配置/i18n监听
 onUnmounted(() => {
 	mittBus.off('openSettingsDrawer', () => {});
+	disposeWebUpdateGate?.();
+	disposeWebUpdateGate = undefined;
 });
 
-// 监听路由的变化，设置网站标题
+// 监听路由的变化，设置网站标题；公开页去掉后台水印
 watch(
 	() => route.path,
 	() => {
 		other.useTitle();
+		if (route.meta?.isPublic) {
+			Watermark.del();
+		} else if (themeConfig.value.isWatermark && themeConfig.value.watermarkText) {
+			Watermark.set(themeConfig.value.watermarkText);
+		}
 	},
 	{
 		deep: true,
+		immediate: true,
 	}
 );
 

@@ -35,4 +35,28 @@ export interface LoginOutput {
      * @memberof LoginOutput
      */
     refreshToken?: string | null;
+
+    /**
+     * 需要扫码绑定 Google Authenticator
+     *
+     * @type {boolean}
+     * @memberof LoginOutput
+     */
+    needTotpSetup?: boolean;
+
+    /**
+     * 需要输入 6 位动态码
+     *
+     * @type {boolean}
+     * @memberof LoginOutput
+     */
+    needTotpVerify?: boolean;
+
+    /**
+     * TOTP 中间票
+     *
+     * @type {string}
+     * @memberof LoginOutput
+     */
+    totpTicket?: string | null;
 }

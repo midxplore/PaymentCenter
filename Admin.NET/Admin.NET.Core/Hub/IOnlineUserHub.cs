@@ -35,4 +35,9 @@ public interface IOnlineUserHub
     /// <param name="context"></param>
     /// <returns></returns>
     Task ReceiveMessage(object context);
+
+    /// <summary>
+    /// 收款订单凭证已到账提醒
+    /// </summary>
+    Task PayOrderPaidAlert(PayOrderPaidAlert context);
 }

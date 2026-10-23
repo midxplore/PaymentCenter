@@ -2,7 +2,16 @@
 	<el-tooltip :visible="state.capsLockVisible" effect="light" :content="t('message.account.lockTag')" placement="top">
 		<el-form ref="ruleFormRef" :model="state.ruleForm" size="large" :rules="state.rules" class="login-content-form">
 			<el-form-item class="login-animation1" prop="account">
-				<el-input ref="accountRef" text :placeholder="t('message.account.accountneed')" v-model="state.ruleForm.account" clearable autocomplete="off" @keyup.enter.native="handleSignIn">
+				<el-input
+					ref="accountRef"
+					text
+					:placeholder="t('message.account.accountneed')"
+					v-model="state.ruleForm.account"
+					clearable
+					autocomplete="off"
+					:disabled="!!state.totpTicket && !state.totpSetupActive"
+					@keyup.enter.native="handleSignIn"
+				>
 					<template #prefix>
 						<el-icon>
 							<ele-User />
@@ -17,6 +26,7 @@
 					:placeholder="t('message.account.passwordneed')"
 					v-model="state.ruleForm.password"
 					autocomplete="off"
+					:disabled="!!state.totpTicket && !state.totpSetupActive"
 					@keyup.enter.native="handleSignIn"
 				>
 					<template #prefix>
@@ -25,7 +35,11 @@
 						</el-icon>
 					</template>
 					<template #suffix>
-						<i class="iconfont el-input__icon login-content-password" :class="state.isShowPassword ? 'icon-yincangmima' : 'icon-xianshimima'" @click="state.isShowPassword = !state.isShowPassword">
+						<i
+							class="iconfont el-input__icon login-content-password"
+							:class="state.isShowPassword ? 'icon-yincangmima' : 'icon-xianshimima'"
+							@click="state.isShowPassword = !state.isShowPassword"
+						>
 						</i>
 					</template>
 				</el-input>
@@ -40,6 +54,7 @@
 						v-model="state.ruleForm.code"
 						clearable
 						autocomplete="off"
+						:disabled="!!state.totpTicket && !state.totpSetupActive"
 						@keyup.enter.native="handleSignIn"
 					>
 						<template #prefix>
@@ -51,7 +66,7 @@
 				</el-col>
 				<el-col :span="1"></el-col>
 				<el-col :span="8">
-					<div :class="[state.expirySeconds > 0 ? 'login-content-code' : 'login-content-code-expired']" @click="getCaptcha">
+					<div :class="[state.expirySeconds > 0 ? 'login-content-code' : 'login-content-code-expired']" @click="!(state.totpTicket && !state.totpSetupActive) && getCaptcha()">
 						<div style="width: 130px; height: 38px; text-align: center; cursor: pointer" v-if="state.captchaImage == ''">
 							<el-icon class="is-loading">
 								<ele-Loading />
@@ -61,15 +76,39 @@
 					</div>
 				</el-col>
 			</el-form-item>
+
+			<!-- 已绑定：同屏验码；未绑定首次登录可留空，通过后弹窗扫码绑定 -->
+			<el-form-item class="login-animation3 totp-inline-item">
+				<el-input
+					ref="totpRef"
+					v-model="state.ruleForm.totpCode"
+					text
+					maxlength="6"
+					inputmode="numeric"
+					autocomplete="one-time-code"
+					placeholder="动态验证码"
+					clearable
+					class="totp-inline-input"
+					@input="onTotpInput"
+					@keyup.enter.native="handleSignIn"
+				>
+					<template #prefix>
+						<el-icon><ele-Key /></el-icon>
+					</template>
+				</el-input>
+			</el-form-item>
+
 			<el-form-item class="login-animation4">
 				<el-button type="primary" icon="ele-Promotion" class="login-content-submit" round v-waves @click="handleSignIn" :loading="state.loading.signIn">
-					<span>{{ $t('message.account.accountBtnText') }}</span>
+					<span>{{ state.totpTicket && !state.totpSetupActive ? '验证并登录' : $t('message.account.accountBtnText') }}</span>
 				</el-button>
+				<button v-if="state.totpTicket && !state.totpSetupActive" type="button" class="totp-back-link" @click="onTotpBack">返回重新登录</button>
 			</el-form-item>
-			<div class="font12 mt30 login-animation4 login-msg">{{ $t('message.mobile.msgText') }}</div>
-			<!-- <el-button type="primary" round v-waves @click="weixinSignIn" :loading="state.loading.signIn"></el-button> -->
+
+			<div class="font12 login-animation4 login-msg">{{ $t('message.mobile.msgText') }}</div>
 		</el-form>
 	</el-tooltip>
+	<TotpDialog v-model="state.totpSetupActive" :ticket="state.totpTicket" @success="onTotpSuccess" @back="onTotpBack" />
 	<div class="dialog-header">
 		<el-dialog v-model="state.rotateVerifyVisible" :show-close="false">
 			<DragVerifyImgRotate
@@ -103,6 +142,8 @@ import { storeToRefs } from 'pinia';
 
 import { accessTokenKey, clearTokens, feature, getAPI } from '/@/utils/axios-utils';
 import { SysAuthApi } from '/@/api-services/system/api';
+import TotpDialog from '/@/views/login/component/totpDialog.vue';
+import { verifyTotp } from '/@/views/login/totpApi';
 
 // 旋转图片滑块组件
 const DragVerifyImgRotate = defineAsyncComponent(() => import('/@/components/dragVerify/dragVerifyImgRotate.vue'));
@@ -118,6 +159,7 @@ const ruleFormRef = ref();
 const accountRef = ref<InputInstance>();
 const passwordRef = ref<InputInstance>();
 const codeRef = ref<InputInstance>();
+const totpRef = ref<InputInstance>();
 const accountNeed = t('message.account.accountneed');
 const passwordNeed = t('message.account.passwordneed');
 const codeNeed = t('message.account.codeNeed');
@@ -132,6 +174,7 @@ const state = reactive({
 		password: window.__env__.VITE_DEFAULT_USER_PASSWORD,
 		code: '',
 		codeId: 0 as any,
+		totpCode: '',
 	},
 	rules: {
 		account: [{ required: true, message: accountNeed, trigger: 'blur' }],
@@ -143,14 +186,21 @@ const state = reactive({
 	},
 	captchaImage: '',
 	rotateVerifyVisible: false,
-	// rotateVerifyImg: verifyImg,
 	rotateVerifyImg: themeConfig.value.logoUrl,
 	secondVerEnabled: false,
 	captchaEnabled: false,
 	isPassRotate: false,
 	capsLockVisible: false,
-	expirySeconds: 60 as any, // 验证码过期时间
+	expirySeconds: 60 as any,
+	totpSetupActive: false,
+	totpTicket: '',
 });
+
+const onTotpInput = () => {
+	state.ruleForm.totpCode = String(state.ruleForm.totpCode || '')
+		.replace(/\D/g, '')
+		.slice(0, 6);
+};
 
 // 验证码过期计时器
 let timer: any = null;
@@ -218,33 +268,96 @@ const currentTime = computed(() => {
 
 // 登录
 const onSignIn = async () => {
+	if (state.totpSetupActive) return;
+
+	// 密码已过、仅差动态码：走验票接口，避免图形码被消费后无法重提
+	if (state.totpTicket) {
+		const code = state.ruleForm.totpCode.trim();
+		if (!/^\d{6}$/.test(code)) {
+			ElMessage.warning('请输入 6 位动态验证码');
+			totpRef.value?.focus();
+			return;
+		}
+		try {
+			state.loading.signIn = true;
+			const login = await verifyTotp(state.totpTicket, code);
+			if (!login.accessToken) {
+				ElMessage.error(loginFail);
+				return;
+			}
+			state.totpTicket = '';
+			await saveTokenAndInitRoutes(login.accessToken);
+		} catch (e: any) {
+			ElMessage.error(e?.message || '动态码不正确');
+			state.ruleForm.totpCode = '';
+			totpRef.value?.focus();
+		} finally {
+			state.loading.signIn = false;
+		}
+		return;
+	}
+
 	ruleFormRef.value.validate(async (valid: boolean) => {
 		if (!valid) return false;
 
 		try {
 			state.loading.signIn = true;
 
-			// SM2加密密码
-			// const keys = SM2.generateKeyPair();
 			const publicKey = window.__env__.VITE_SM_PUBLIC_KEY;
 			const password = sm2.doEncrypt(state.ruleForm.password, publicKey, 1);
 
 			const tenantid = route.query.tid ?? 0;
-			const [err, res] = await feature(getAPI(SysAuthApi).apiSysAuthLoginPost({ ...state.ruleForm, password: password, tenantId: Number(tenantid) }));
+			const [err, res] = await feature(
+				getAPI(SysAuthApi).apiSysAuthLoginPost({
+					...state.ruleForm,
+					password: password,
+					tenantId: Number(tenantid),
+					totpCode: state.ruleForm.totpCode || undefined,
+				} as any)
+			);
 			if (err) {
-				getCaptcha(); // 重新获取验证码
+				getCaptcha();
 				return;
 			}
-			if (res.data.result?.accessToken == undefined) {
-				getCaptcha(); // 重新获取验证码
+			const result = res.data.result;
+			if (result?.needTotpSetup) {
+				state.totpTicket = result.totpTicket || '';
+				state.totpSetupActive = true;
+				return;
+			}
+			if (result?.needTotpVerify) {
+				state.totpTicket = result.totpTicket || '';
+				ElMessage.info('请输入身份验证器中的 6 位动态码');
+				totpRef.value?.focus();
+				return;
+			}
+			if (result?.accessToken == undefined) {
+				getCaptcha();
 				ElMessage.error(loginFail);
 				return;
 			}
-			await saveTokenAndInitRoutes(res.data.result?.accessToken);
+			await saveTokenAndInitRoutes(result.accessToken);
 		} finally {
 			state.loading.signIn = false;
 		}
 	});
+};
+
+const onTotpSuccess = async (login: { accessToken?: string | null }) => {
+	if (!login.accessToken) {
+		ElMessage.error(loginFail);
+		return;
+	}
+	state.totpSetupActive = false;
+	state.totpTicket = '';
+	await saveTokenAndInitRoutes(login.accessToken);
+};
+
+const onTotpBack = () => {
+	state.totpSetupActive = false;
+	state.totpTicket = '';
+	state.ruleForm.totpCode = '';
+	getCaptcha();
 };
 
 // 保持Token并初始化路由
@@ -317,6 +430,10 @@ const passRotateVerify = () => {
 
 // 登录处理
 const handleSignIn = () => {
+	if (state.totpTicket && !state.totpSetupActive) {
+		onSignIn();
+		return;
+	}
 	if (!state.ruleForm.account) {
 		accountRef.value?.focus();
 	} else if (!state.ruleForm.password) {
@@ -361,6 +478,31 @@ defineExpose({ saveTokenAndInitRoutes });
 
 .login-content-form {
 	margin-top: 20px;
+
+	.totp-inline-item {
+		:deep(.el-form-item__content) {
+			display: block;
+			width: 100%;
+		}
+	}
+
+	.totp-inline-input {
+		:deep(input) {
+			letter-spacing: 0.28em;
+			font-variant-numeric: tabular-nums;
+		}
+	}
+
+	.totp-back-link {
+		display: block;
+		width: 100%;
+		margin-top: 10px;
+		border: none;
+		background: transparent;
+		color: var(--el-color-primary);
+		cursor: pointer;
+		font-size: 13px;
+	}
 
 	@for $i from 0 through 4 {
 		.login-animation#{$i} {
@@ -427,11 +569,14 @@ defineExpose({ saveTokenAndInitRoutes });
 		width: 100%;
 		letter-spacing: 2px;
 		font-weight: 300;
-		margin-top: 15px;
+		margin-top: 8px;
 	}
 
 	.login-msg {
+		margin-top: 12px;
 		color: var(--el-text-color-placeholder);
+		line-height: 1.5;
+		word-break: break-word;
 	}
 }
 </style>

@@ -129,6 +129,21 @@
 								<el-form-item :label="t('message.list.confirmPassword')" prop="passwordNew2" :rules="[{ validator: validatePassword, required: true, trigger: 'blur' }]">
 									<el-input v-model="state.passwordNew2" type="password" autocomplete="off" show-password />
 								</el-form-item>
+								<el-form-item
+									label="动态验证码"
+									prop="totpCode"
+									:rules="[{ required: true, message: '请输入身份验证器中的 6 位动态码', trigger: 'blur' }, { min: 6, max: 6, message: '动态码须为 6 位', trigger: 'blur' }]"
+								>
+									<el-input
+										v-model="state.ruleFormPassword.totpCode"
+										maxlength="6"
+										inputmode="numeric"
+										autocomplete="one-time-code"
+										placeholder="Authenticator 6 位码"
+										clearable
+										@input="onChangePwdTotpInput"
+									/>
+								</el-form-item>
 								<el-form-item>
 									<el-button icon="ele-Refresh" @click="resetPassword">{{ $t('message.list.reset') }}</el-button>
 									<el-button icon="ele-CircleCheckFilled" type="primary" @click="submitPassword" v-auth="'sysUser/changePwd'">{{ $t('message.list.confirmButtonText') }}</el-button>
@@ -318,7 +333,14 @@ const validatePassword = (_rule: any, value: any, callback: any) => {
 const resetPassword = () => {
 	state.ruleFormPassword.passwordOld = '';
 	state.ruleFormPassword.passwordNew = '';
+	state.ruleFormPassword.totpCode = '';
 	state.passwordNew2 = '';
+};
+
+const onChangePwdTotpInput = () => {
+	state.ruleFormPassword.totpCode = String(state.ruleFormPassword.totpCode || '')
+		.replace(/\D/g, '')
+		.slice(0, 6);
 };
 
 // 密码提交
@@ -327,7 +349,7 @@ const submitPassword = () => {
 		if (!valid) return;
 
 		// SM2加密密码
-		var cpwd: ChangePwdInput = { passwordOld: '', passwordNew: '' };
+		var cpwd: ChangePwdInput = { passwordOld: '', passwordNew: '', totpCode: state.ruleFormPassword.totpCode };
 		var publicKey = window.__env__.VITE_SM_PUBLIC_KEY;
 		if (publicKey == '') {
 			var res = await getAPI(SysConfigApi).apiSysConfigSmPublicKeyGet();
@@ -338,14 +360,6 @@ const submitPassword = () => {
 		await getAPI(SysUserApi).apiSysUserChangePwdPost(cpwd);
 
 		// 修改密码后后端会强制下线，无需弹出确认重新登录提示
-		// // 退出系统
-		// ElMessageBox.confirm(t('message.list.passwordModifiedConfirmRelogin'), t('message.list.hint'), {
-		// 	confirmButtonText: t('message.list.confirmButtonText'),
-		// 	cancelButtonText: t('message.list.cancelButtonText'),
-		// 	type: 'warning',
-		// }).then(async () => {
-		// 	clearAccessTokens();
-		// });
 	});
 };
 

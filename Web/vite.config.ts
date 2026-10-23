@@ -34,6 +34,8 @@ const viteConfig = defineConfig((mode: ConfigEnv) => {
 			vueJsx(),
 			webUpdateNotice({
 				versionType: 'build_timestamp',
+				// 默认条会在收银台弹出；改由 App 里按路由决定是否提示（收银台不提示）
+				hiddenDefaultNotification: true,
 				notificationConfig: {
 					placement: 'topLeft',
 				},

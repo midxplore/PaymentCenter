@@ -1,4 +1,4 @@
-﻿// Admin.NET 项目的版权、商标、专利和其他相关权利均受相应法律法规的保护。使用本项目应遵守相关法律法规和许可证的要求。
+// Admin.NET 项目的版权、商标、专利和其他相关权利均受相应法律法规的保护。使用本项目应遵守相关法律法规和许可证的要求。
 //
 // 本项目主要遵循 MIT 许可证和 Apache 许可证（版本 2.0）进行分发和使用。许可证位于源代码树根目录中的 LICENSE-MIT 和 LICENSE-APACHE 文件。
 //
@@ -22,6 +22,7 @@ public class SysUserService : IDynamicApiController, ITransient
     private readonly SysUserMenuService _sysUserMenuService;
     private readonly SysCacheService _sysCacheService;
     private readonly SysUserLdapService _sysUserLdapService;
+    private readonly SysTotpService _sysTotpService;
     private readonly SqlSugarRepository<SysUser> _sysUserRep;
     private readonly IEventPublisher _eventPublisher;
 
@@ -35,6 +36,7 @@ public class SysUserService : IDynamicApiController, ITransient
         SysUserMenuService sysUserMenuService,
         SysCacheService sysCacheService,
         SysUserLdapService sysUserLdapService,
+        SysTotpService sysTotpService,
         SqlSugarRepository<SysUser> sysUserRep,
         IEventPublisher eventPublisher)
     {
@@ -48,6 +50,7 @@ public class SysUserService : IDynamicApiController, ITransient
         _sysUserMenuService = sysUserMenuService;
         _sysCacheService = sysCacheService;
         _sysUserLdapService = sysUserLdapService;
+        _sysTotpService = sysTotpService;
         _sysUserRep = sysUserRep;
         _eventPublisher = eventPublisher;
     }
@@ -327,6 +330,9 @@ public class SysUserService : IDynamicApiController, ITransient
                 throw Oops.Oh(ErrorCodeEnum.D1004);
         }
 
+        // 旧密码通过后再验 TOTP，避免未授权爆破动态码
+        _sysTotpService.EnsureTotp(user, input.TotpCode);
+
         if (input.PasswordOld == input.PasswordNew)
             throw Oops.Oh(ErrorCodeEnum.D1028);
 
@@ -432,6 +438,20 @@ public class SysUserService : IDynamicApiController, ITransient
 
         // 发布解除登录锁定事件
         await _eventPublisher.PublishAsync(UserEventTypeEnum.UnlockLogin, input);
+    }
+
+    /// <summary>
+    /// 重置用户 TOTP（清空绑定，下次登录须重新扫码）🔖
+    /// </summary>
+    [DisplayName("重置TOTP")]
+    public virtual async Task ResetTotp(BaseIdInput input)
+    {
+        var user = await _sysUserRep.GetByIdAsync(input.Id) ?? throw Oops.Oh(ErrorCodeEnum.D0009);
+        user.TotpSecret = null;
+        user.TotpEnabled = false;
+        user.TokenVersion++;
+        await _sysUserRep.AsUpdateable(user).UpdateColumns(u => new { u.TotpSecret, u.TotpEnabled, u.TokenVersion }).ExecuteCommandAsync();
+        await OfflineAndExpireToken(user);
     }
 
     /// <summary>

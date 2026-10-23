@@ -1,4 +1,4 @@
-﻿// Admin.NET 项目的版权、商标、专利和其他相关权利均受相应法律法规的保护。使用本项目应遵守相关法律法规和许可证的要求。
+// Admin.NET 项目的版权、商标、专利和其他相关权利均受相应法律法规的保护。使用本项目应遵守相关法律法规和许可证的要求。
 //
 // 本项目主要遵循 MIT 许可证和 Apache 许可证（版本 2.0）进行分发和使用。许可证位于源代码树根目录中的 LICENSE-MIT 和 LICENSE-APACHE 文件。
 //
@@ -41,6 +41,12 @@ public class LoginInput
     public string Code { get; set; }
 
     /// <summary>
+    /// Google Authenticator 6 位动态码（已绑定用户可与密码同屏提交；未绑定可空）
+    /// </summary>
+    [MaxLength(6, ErrorMessage = "动态码须为6位")]
+    public string TotpCode { get; set; }
+
+    /// <summary>
     /// 登录模式
     /// </summary>
     public LoginModeEnum LoginMode { get; set; } = LoginModeEnum.PC;
@@ -68,6 +74,12 @@ public class LoginPhoneInput
     /// </summary>
     //[Required(ErrorMessage = "租户Id不能为空")]
     public long TenantId { get; set; }
+
+    /// <summary>
+    /// Google Authenticator 6 位动态码（已绑定可同屏提交）
+    /// </summary>
+    [MaxLength(6, ErrorMessage = "动态码须为6位")]
+    public string TotpCode { get; set; }
 
     /// <summary>
     /// 登录模式

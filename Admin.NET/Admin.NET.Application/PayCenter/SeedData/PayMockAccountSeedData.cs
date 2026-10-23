@@ -7,7 +7,7 @@
 namespace Admin.NET.Application;
 
 /// <summary>
-/// 模拟收款账号种子（联调 allocate 用，备注标明模拟）
+/// 模拟收款账号种子（联调 allocate / 收银台用，备注标明模拟）
 /// </summary>
 [SeedData(516)]
 [IncreSeed]
@@ -22,6 +22,8 @@ public class PayMockAccountSeedData : ISqlSugarEntitySeedData<PayAccount>
             {
                 Id = 1300000000801,
                 Type = "wxpay",
+                PayeeName = "模拟微信收款人",
+                AccountNo = "mock-wx-001",
                 AccountInfo = "mock-wx-001",
                 QrImageUrl = "",
                 TotalQuota = 5000m,
@@ -36,6 +38,8 @@ public class PayMockAccountSeedData : ISqlSugarEntitySeedData<PayAccount>
             {
                 Id = 1300000000802,
                 Type = "wxpay",
+                PayeeName = "模拟微信收款人",
+                AccountNo = "mock-wx-002",
                 AccountInfo = "mock-wx-002",
                 QrImageUrl = "",
                 TotalQuota = 50000m,
@@ -50,6 +54,8 @@ public class PayMockAccountSeedData : ISqlSugarEntitySeedData<PayAccount>
             {
                 Id = 1300000000803,
                 Type = "alipay",
+                PayeeName = "模拟支付宝收款人",
+                AccountNo = "mock-ali-001",
                 AccountInfo = "mock-ali-001",
                 QrImageUrl = "",
                 TotalQuota = 8000m,
@@ -64,13 +70,17 @@ public class PayMockAccountSeedData : ISqlSugarEntitySeedData<PayAccount>
             {
                 Id = 1300000000804,
                 Type = "bank",
+                PayeeName = "模拟银行收款人",
+                AccountNo = "6222020000000000001",
                 AccountInfo = "6222020000000000001",
+                BankName = "中国工商银行",
+                BranchName = "模拟支行",
                 QrImageUrl = "",
                 TotalQuota = 100000m,
                 UsedQuota = 0m,
                 LockedQuota = 0m,
                 Status = PayAccountStatusEnum.Enabled,
-                Remark = "模拟·银行卡转账",
+                Remark = "请勿使用工商银行卡支付，该银行卡付款可能导致无法到账。\n若您已完成付款，请务必点击【我已付款完成】",
                 EmptyExpireCount = 0,
                 CreateTime = t
             },

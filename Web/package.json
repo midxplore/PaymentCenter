@@ -3,8 +3,8 @@
 	"type": "module",
 	"version": "1.1.0",
 	"lastBuildTime": "2026.09.22",
-	"description": "马上付 · 收款账号分配系统",
-	"author": "PaymentCenter",
+	"description": "PulsePay · 收款账号分配系统",
+	"author": "PulsePay",
 	"license": "MIT",
 	"scripts": {
 		"dev": "vite --open",

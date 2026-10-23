@@ -167,7 +167,7 @@ const resetQuery = async () => {
 // 打开新增页面
 const handleAdd = () => {
     EditCodeGenRef.value?.openDialog({
-        authorName: '支付中心',
+        authorName: 'PulsePay',
         generateMethod: 200,
         printType: 1,
         menuIcon: 'ele-Menu',

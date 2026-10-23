@@ -196,9 +196,34 @@ public class PayOrderOutput
     public string VoucherUrl { get; set; }
 
     /// <summary>
+    /// 收银台上传的凭证路径列表
+    /// </summary>
+    public List<string> VoucherUrls { get; set; } = [];
+
+    /// <summary>
+    /// 商户 Webhook 是否已成功派发过（成功后不可再点「通知商户」）
+    /// </summary>
+    public bool WebhookNotified { get; set; }
+
+    /// <summary>
     /// 创建时间
     /// </summary>
     public DateTime CreateTime { get; set; }
+
+    /// <summary>
+    /// 收银台完整 URL（详情调试用；列表可空）
+    /// </summary>
+    public string CashierUrl { get; set; }
+
+    /// <summary>
+    /// 商户指定的返回地址
+    /// </summary>
+    public string ReturnUrl { get; set; }
+
+    /// <summary>
+    /// 返回按钮文案
+    /// </summary>
+    public string ReturnLabel { get; set; }
 }
 
 /// <summary>
@@ -213,9 +238,8 @@ public class ConfirmReceivedInput
     public long Id { get; set; }
 
     /// <summary>
-    /// 水单路径（必填，先调 uploadVoucher）
+    /// 水单路径（可空：等待确认订单可回落收银台已传凭证）
     /// </summary>
-    [Required(ErrorMessage = "水单不能为空")]
     [MaxLength(PayConst.VoucherUrlLength, ErrorMessage = "水单路径过长")]
     public string VoucherUrl { get; set; }
 
@@ -227,11 +251,47 @@ public class ConfirmReceivedInput
 }
 
 /// <summary>
+/// 确认到账结果（含 Webhook 派发情况，便于运营核对）
+/// </summary>
+public class ConfirmReceivedOutput
+{
+    public string OrderNo { get; set; }
+
+    public string Status { get; set; }
+
+    /// <summary>是否已写入 outbox</summary>
+    public bool WebhookQueued { get; set; }
+
+    /// <summary>即时派发是否成功（对方返回 success）</summary>
+    public bool WebhookDispatched { get; set; }
+
+    public string WebhookMessage { get; set; }
+}
+
+/// <summary>
+/// 运营确认未到账入参
+/// </summary>
+public class MarkUnpaidInput
+{
+    /// <summary>
+    /// 订单 Id
+    /// </summary>
+    [Range(1, long.MaxValue, ErrorMessage = "订单不能为空")]
+    public long Id { get; set; }
+
+    /// <summary>
+    /// 备注（建议填写未到账原因）
+    /// </summary>
+    [MaxLength(256)]
+    public string Remark { get; set; }
+}
+
+/// <summary>
 /// 后台订单详情输出（F7.1 全生命周期）
 /// </summary>
 /// <remarks>
-/// 订单当前状态 + 完整变更历史（事件流水）+ 每次通知明细，
-/// 三张表一次给全，满足「一笔订单到底发生了什么」的追溯需求。
+/// 订单当前状态 + 事件流水 + 商户 Webhook 派发记录；
+/// 旧入站 notify 仅作兼容折叠展示。
 /// </remarks>
 public class PayOrderDetailOutput
 {
@@ -246,9 +306,102 @@ public class PayOrderDetailOutput
     public List<PayOrderEventOutput> Events { get; set; } = [];
 
     /// <summary>
-    /// 到账通知明细（按到账时间升序）
+    /// 商户通知（Webhook outbox，按入队时间倒序）
+    /// </summary>
+    public List<PayWebhookOutboxOutput> WebhookRecords { get; set; } = [];
+
+    /// <summary>
+    /// 历史入站到账明细（旧 /api/pay/notify，已下线；有数据时前端折叠展示）
     /// </summary>
     public List<PayNotifyRecordOutput> NotifyRecords { get; set; } = [];
+
+    /// <summary>
+    /// 与本单相关的开放接口审计摘要（allocate 等）
+    /// </summary>
+    public List<PayOrderOpenApiCallOutput> OpenApiCalls { get; set; } = [];
+}
+
+/// <summary>
+/// 订单详情：开放接口调用摘要（排障用，非原始 body）
+/// </summary>
+public class PayOrderOpenApiCallOutput
+{
+    public long Id { get; set; }
+
+    public PayAuditActionEnum Action { get; set; }
+
+    public string ActionText { get; set; }
+
+    public string ClientKey { get; set; }
+
+    public long? ClientId { get; set; }
+
+    public string OperatorIp { get; set; }
+
+    public string Remark { get; set; }
+
+    public DateTime CreateTime { get; set; }
+}
+
+/// <summary>
+/// 商户 Webhook 派发记录（订单详情）
+/// </summary>
+public class PayWebhookOutboxOutput
+{
+    /// <summary>
+    /// 主键Id
+    /// </summary>
+    public long Id { get; set; }
+
+    /// <summary>
+    /// 幂等事件 Id
+    /// </summary>
+    public string EventId { get; set; }
+
+    /// <summary>
+    /// 事件类型（如 OrderResult）
+    /// </summary>
+    public string EventType { get; set; }
+
+    /// <summary>
+    /// 派发目标 URL（入队快照）
+    /// </summary>
+    public string WebhookUrl { get; set; }
+
+    /// <summary>
+    /// 派发状态
+    /// </summary>
+    public PayWebhookStatusEnum Status { get; set; }
+
+    /// <summary>
+    /// 派发状态中文
+    /// </summary>
+    public string StatusText { get; set; }
+
+    /// <summary>
+    /// 已尝试次数
+    /// </summary>
+    public int AttemptCount { get; set; }
+
+    /// <summary>
+    /// 下次重试时间（待派发时有效）
+    /// </summary>
+    public DateTime? NextRetryTime { get; set; }
+
+    /// <summary>
+    /// 最近一次错误摘要
+    /// </summary>
+    public string LastError { get; set; }
+
+    /// <summary>
+    /// JSON 报文正文
+    /// </summary>
+    public string Payload { get; set; }
+
+    /// <summary>
+    /// 入队时间
+    /// </summary>
+    public DateTime CreateTime { get; set; }
 }
 
 /// <summary>

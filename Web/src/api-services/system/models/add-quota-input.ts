@@ -13,7 +13,7 @@
  */
 
  /**
- * 追加额度输入（F1.2）
+ * 额度调整输入（增加 / 减少）
  *
  * @export
  * @interface AddQuotaInput
@@ -29,10 +29,18 @@ export interface AddQuotaInput {
     id: number;
 
     /**
-     * 本次追加的额度
+     * 调整金额（绝对值，须大于 0）
      *
      * @type {number}
      * @memberof AddQuotaInput
      */
     quota?: number;
+
+    /**
+     * true=增加总额度；false=减少总额度
+     *
+     * @type {boolean}
+     * @memberof AddQuotaInput
+     */
+    increase?: boolean;
 }

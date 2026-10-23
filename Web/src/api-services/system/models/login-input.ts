@@ -64,6 +64,14 @@ export interface LoginInput {
     code?: string | null;
 
     /**
+     * Google Authenticator 6 位动态码（已绑定可同屏提交）
+     *
+     * @type {string}
+     * @memberof LoginInput
+     */
+    totpCode?: string | null;
+
+    /**
      * @type {LoginModeEnum}
      * @memberof LoginInput
      */

@@ -998,9 +998,9 @@ public enum ErrorCodeEnum
     API_QUOTA_BUSY,
 
     /// <summary>
-    /// 追加额度必须大于 0
+    /// 额度调整金额必须大于 0
     /// </summary>
-    [ErrorCodeItemMetadata("追加额度必须大于 0")]
+    [ErrorCodeItemMetadata("额度调整金额必须大于 0")]
     API_QUOTA_AMOUNT_INVALID,
 
     /// <summary>
@@ -1034,9 +1034,9 @@ public enum ErrorCodeEnum
     API_STATUS_READONLY,
 
     /// <summary>
-    /// 该账号剩余可用额度为 0，请先追加额度
+    /// 该账号剩余可用额度为 0，请先调整额度
     /// </summary>
-    [ErrorCodeItemMetadata("该账号剩余可用额度为 0，请先追加额度")]
+    [ErrorCodeItemMetadata("该账号剩余可用额度为 0，请先调整额度")]
     API_QUOTA_EXHAUSTED,
 
     /// <summary>
