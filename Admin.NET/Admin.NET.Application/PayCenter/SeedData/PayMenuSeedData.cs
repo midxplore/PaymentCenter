@@ -53,6 +53,11 @@ public class PayMenuSeedData : ISqlSugarEntitySeedData<SysMenu>
         [
             new SysMenu{ Id=1300000000201, Pid=0, Title="收款管理", Path="/paycenter", Name="paycenter", Component="Layout", Icon="ele-Money", Type=MenuTypeEnum.Dir, CreateTime=createTime, OrderNo=500 },
 
+            //// 运营汇总（按日流水 + 日终快照）
+            new SysMenu{ Id=1300000000251, Pid=1300000000201, Title="运营汇总", Path="/paycenter/summary", Name="paySummary", Component="/paycenter/summary/index", Icon="ele-DataAnalysis", Type=MenuTypeEnum.Menu, CreateTime=createTime, OrderNo=90 },
+            new SysMenu{ Id=1300000000252, Pid=1300000000251, Title="查询", Permission="paySummary/daily", Type=MenuTypeEnum.Btn, CreateTime=createTime, OrderNo=100 },
+            new SysMenu{ Id=1300000000253, Pid=1300000000251, Title="导出", Permission="paySummary/exportDaily", Type=MenuTypeEnum.Btn, CreateTime=createTime, OrderNo=110 },
+
             //// 收款账号（F1）
             new SysMenu{ Id=1300000000211, Pid=1300000000201, Title="收款账号", Path="/paycenter/account", Name="payAccount", Component="/paycenter/account/index", Icon="ele-CreditCard", Type=MenuTypeEnum.Menu, CreateTime=createTime, OrderNo=100 },
             new SysMenu{ Id=1300000000212, Pid=1300000000211, Title="查询", Permission="payAccount/page", Type=MenuTypeEnum.Btn, CreateTime=createTime, OrderNo=100 },

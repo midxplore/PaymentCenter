@@ -233,6 +233,9 @@ const syncAccountInfo = () => {
 	state.ruleForm.accountInfo = (state.ruleForm.accountNo || '').trim();
 };
 
+/** 新增时备注默认文案（wangEditor HTML） */
+const DEFAULT_NEW_REMARK = '<p>如果扫码支付失败，可使用转账的方式转入。</p>';
+
 // 打开弹窗
 const openDialog = (row: any) => {
 	state.ruleForm = JSON.parse(JSON.stringify(row));
@@ -240,7 +243,12 @@ const openDialog = (row: any) => {
 	if (!state.ruleForm.accountNo && state.ruleForm.accountInfo) {
 		state.ruleForm.accountNo = state.ruleForm.accountInfo;
 	}
-	if (state.ruleForm.remark == null) state.ruleForm.remark = '';
+	const isNew = !(state.ruleForm.id != undefined && state.ruleForm.id > 0);
+	if (isNew && !normalizeRemark(state.ruleForm.remark)) {
+		state.ruleForm.remark = DEFAULT_NEW_REMARK;
+	} else if (state.ruleForm.remark == null) {
+		state.ruleForm.remark = '';
+	}
 	if (!state.ruleForm.accountTier) state.ruleForm.accountTier = 1;
 	if (state.ruleForm.minAmount == null || state.ruleForm.minAmount === '') state.ruleForm.minAmount = 0;
 	syncAccountInfo();

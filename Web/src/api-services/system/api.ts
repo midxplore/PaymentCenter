@@ -18,6 +18,7 @@ export * from './apis/pay-account-api';
 export * from './apis/pay-audit-api';
 export * from './apis/pay-export-api';
 export * from './apis/pay-order-api';
+export * from './apis/pay-summary-api';
 export * from './apis/sys-auth-api';
 export * from './apis/sys-cache-api';
 export * from './apis/sys-code-gen-api';

@@ -114,7 +114,7 @@ public enum PayAuditActionEnum
     ResendWebhook = 11,
 
     /// <summary>
-    /// 运营确认未到账（订单置已过期并释放预占/占用）
+    /// 运营确认未到账（订单置 Failed；额度继续预占，收银台可再传凭证）
     /// </summary>
     [Description("确认未到账")]
     MarkUnpaid = 12

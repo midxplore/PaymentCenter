@@ -224,6 +224,16 @@ public class PayConst
     public const string WebhookJobTriggerId = "pay_webhook_dispatch_trigger";
 
     /// <summary>
+    /// 运营汇总日终快照作业标识
+    /// </summary>
+    public const string OpsDailySnapshotJobId = "pay_ops_daily_snapshot_job";
+
+    /// <summary>
+    /// 运营汇总日终快照触发器标识（每日午夜）
+    /// </summary>
+    public const string OpsDailySnapshotTriggerId = "pay_ops_daily_snapshot_trigger";
+
+    /// <summary>
     /// Webhook 单次 HTTP 超时（秒）
     /// </summary>
     public const int WebhookHttpTimeoutSeconds = 10;

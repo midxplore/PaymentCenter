@@ -27,7 +27,7 @@ dotnet/python/docker 不在默认 PATH；npm **必须** `env -u NODE_OPTIONS`。
 
 ## 硬约束（违反会静默错）
 
-**额度**：比较「列在左」`Total >= Used+Locked+amount`；预占 **阻塞 `FOR UPDATE`，禁 `SKIP LOCKED`**；过期/到账先抢状态再读金额。匹配**不再**依赖 `InUse`（锁后 Enabled/Exhausted）；普通账号非过期订单数 `< 2`，大额不限。`MinAmount>0` 时请求金额须 ≥ 最小金额，并优先选高门槛码。过期重传须重锁额度，失败进异常台账。
+**额度**：比较「列在左」`Total >= Used+Locked+amount`；预占 **阻塞 `FOR UPDATE`，禁 `SKIP LOCKED`**；过期/到账先抢状态再读金额。匹配**不再**依赖 `InUse`（锁后 Enabled/Exhausted）；普通账号非过期订单数 `< 2`，大额不限。`MinAmount>0` 时请求金额须 ≥ 最小金额，并优先选高门槛码。过期重传须重锁额度，失败进异常台账。运营汇总：日切 `Asia/Shanghai`；**过期释放=`Request−Received`**（勿用 `Expired.Amount`）；日终存量靠 `pay_ops_daily_snapshot`。
 
 **账号备注 / 收银台 Notice**：后台 wangEditor 写受限 HTML；存库与出库 `PayHtmlSanitize`；列宽三处联动 `PayConst.AccountRemarkLength`（2000）+ schema + DTO MaxLength。
 
