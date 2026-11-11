@@ -37,4 +37,14 @@ public class PayAllocateController : IDynamicApiController, ITransient
     [PayScope(PayConst.ScopeAllocate)]
     public async Task<OrderQueryOutput> GetStatus([FromQuery] string orderNo)
         => await _payAllocateService.GetStatus(orderNo);
+
+    /// <summary>
+    /// 查询某收款类型当前可匹配池可用额度（只读快照，不预占）。
+    /// </summary>
+    [ApiDescriptionSettings(Name = "Capacity"), HttpGet]
+    [DisplayName("查询可用额度")]
+    [Authorize(AuthenticationSchemes = SignatureAuthenticationDefaults.AuthenticationScheme)]
+    [PayScope(PayConst.ScopeAllocate)]
+    public async Task<CapacityOutput> GetCapacity([FromQuery] string type, [FromQuery] string amount = null)
+        => await _payAllocateService.GetCapacity(type, amount);
 }

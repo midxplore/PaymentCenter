@@ -147,6 +147,13 @@ const options = useVxeTable<PayAccountOutput>(
 			{ field: 'lockedQuota', title: '预占额度', minWidth: 110, align: 'right', formatter: ({ cellValue }) => money(cellValue) },
 			{ field: 'remainingQuota', title: '剩余可用', minWidth: 110, align: 'right', slots: { default: 'row_remainingQuota' } },
 			{ field: 'accountTierText', title: '账号类型', minWidth: 100, showOverflow: 'tooltip' },
+			{
+				field: 'dispatchModeText',
+				title: '调度方式',
+				minWidth: 100,
+				showOverflow: 'tooltip',
+				formatter: ({ row }) => row.dispatchModeText || ({ 1: '权重优选', 2: '轮询' }[Number(row.dispatchMode)] ?? '-'),
+			},
 			{ field: 'minAmount', title: '最小金额', minWidth: 110, align: 'right', formatter: ({ cellValue }) => (Number(cellValue) > 0 ? money(cellValue) : '-') },
 			{ field: 'status', title: '状态', minWidth: 90, slots: { default: 'row_status' } },
 			{ field: 'remark', title: '备注', minWidth: 140, showOverflow: 'tooltip' },

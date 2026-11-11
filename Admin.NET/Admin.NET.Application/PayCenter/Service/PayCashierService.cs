@@ -12,12 +12,37 @@ using Microsoft.Extensions.Logging;
 namespace Admin.NET.Application;
 
 /// <summary>
-/// 收银台配置（Application/Configuration/PayCenter.json）
+/// 收银台 / 匹配调度配置（Application/Configuration/PayCenter.json）
 /// </summary>
 public class PayCenterOptions
 {
     /// <summary>收银台对外 Base URL（无尾斜杠）；生产必配</summary>
     public string CashierPublicBaseUrl { get; set; }
+
+    /// <summary>匹配调度策略（默认与混用优先级）；单账号以库字段 DispatchMode 为准</summary>
+    public PayDispatchOptions Dispatch { get; set; } = new();
+}
+
+/// <summary>
+/// 匹配调度配置
+/// </summary>
+public class PayDispatchOptions
+{
+    /// <summary>新建账号默认调度方式：Weighted / RoundRobin</summary>
+    public string DefaultMode { get; set; } = nameof(PayDispatchModeEnum.Weighted);
+
+    /// <summary>同 Type 混用时是否优先轮询账号</summary>
+    public bool PreferRoundRobinWhenMixed { get; set; } = true;
+
+    /// <summary>解析默认调度枚举（非法或空 → 权重优选）</summary>
+    public PayDispatchModeEnum ResolveDefaultMode()
+    {
+        if (string.Equals(DefaultMode, nameof(PayDispatchModeEnum.RoundRobin), StringComparison.OrdinalIgnoreCase)
+            || string.Equals(DefaultMode, "RoundRobin", StringComparison.OrdinalIgnoreCase)
+            || DefaultMode == "2")
+            return PayDispatchModeEnum.RoundRobin;
+        return PayDispatchModeEnum.Weighted;
+    }
 }
 
 /// <summary>

@@ -287,6 +287,115 @@ public class PayAllocateService : ITransient
         };
     }
 
+    /// <summary>
+    /// 按收款类型查询当前可匹配池可用额度（只读快照，不预占）
+    /// </summary>
+    /// <remarks>
+    /// 口径与 <see cref="TryLockQuotaAsync"/> 硬过滤对齐：Enabled、剩余、普通账号非过期单数、
+    /// 可选 MinAmount。结果仅为引导用快照，以随后 allocate 为准。
+    /// ★ HTTP 入口在 <see cref="PayAllocateController.GetCapacity"/>（签名 + scope=allocate）；不审资金。
+    /// </remarks>
+    [NonAction]
+    public async Task<CapacityOutput> GetCapacity([FromQuery] string type, [FromQuery] string amount = null)
+    {
+        var typeCode = type?.Trim();
+        if (string.IsNullOrWhiteSpace(typeCode)) throw Oops.Bah("收款类型不能为空");
+
+        decimal? probeAmount = null;
+        if (!string.IsNullOrWhiteSpace(amount))
+        {
+            if (!decimal.TryParse(amount.Trim(), System.Globalization.NumberStyles.Number,
+                    System.Globalization.CultureInfo.InvariantCulture, out var parsed) || parsed <= 0)
+                throw Oops.Oh(ErrorCodeEnum.API_AMOUNT_INVALID, "必须大于 0");
+            if (PayConst.HasExcessScale(parsed))
+                throw Oops.Oh(ErrorCodeEnum.API_AMOUNT_INVALID, $"小数位不能超过 {PayConst.AmountScale} 位");
+            probeAmount = parsed;
+        }
+
+        // 可匹配账号：Enabled + 剩余>0 + 普通账号槽位；合计/单码最大不套 MinAmount（未带 amount 时）
+        const string sumSql = @"
+SELECT COALESCE(SUM(remain), 0) AS available,
+       COALESCE(MAX(remain), 0) AS maxsingle
+  FROM (
+        SELECT (a.TotalQuota - a.UsedQuota - a.LockedQuota) AS remain
+          FROM pay_account a
+         WHERE a.Type = @type
+           AND a.Status = @enabled
+           AND a.IsDelete = false
+           AND a.TotalQuota > a.UsedQuota + a.LockedQuota
+           AND (
+                 COALESCE(a.AccountTier, @tierNormal) = @tierLarge
+                 OR (
+                      SELECT COUNT(*) FROM pay_order o
+                       WHERE o.AccountId = a.Id
+                         AND o.IsDelete = false
+                         AND o.Status <> @expired
+                    ) < @normalMaxOrders
+               )
+       ) t;";
+
+        var rows = await _db.Ado.SqlQueryAsync<CapacitySumRow>(sumSql,
+            new SugarParameter("@type", typeCode),
+            new SugarParameter("@enabled", (int)PayAccountStatusEnum.Enabled),
+            new SugarParameter("@expired", (int)PayOrderStatusEnum.Expired),
+            new SugarParameter("@tierNormal", (int)PayAccountTierEnum.Normal),
+            new SugarParameter("@tierLarge", (int)PayAccountTierEnum.Large),
+            new SugarParameter("@normalMaxOrders", PayConst.NormalAccountMaxNonExpiredOrders));
+
+        var available = rows.Count > 0 ? rows[0].Available : 0m;
+        var maxSingle = rows.Count > 0 ? rows[0].MaxSingle : 0m;
+
+        bool? allocatable = null;
+        if (probeAmount.HasValue)
+        {
+            const string existsSql = @"
+SELECT CASE WHEN EXISTS (
+        SELECT 1
+          FROM pay_account a
+         WHERE a.Type = @type
+           AND a.Status = @enabled
+           AND a.IsDelete = false
+           AND a.TotalQuota >= a.UsedQuota + a.LockedQuota + @amount
+           AND COALESCE(a.MinAmount, 0) <= @amount
+           AND (
+                 COALESCE(a.AccountTier, @tierNormal) = @tierLarge
+                 OR (
+                      SELECT COUNT(*) FROM pay_order o
+                       WHERE o.AccountId = a.Id
+                         AND o.IsDelete = false
+                         AND o.Status <> @expired
+                    ) < @normalMaxOrders
+               )
+       ) THEN 1 ELSE 0 END;";
+
+            var flags = await _db.Ado.SqlQueryAsync<int>(existsSql,
+                new SugarParameter("@type", typeCode),
+                new SugarParameter("@amount", probeAmount.Value),
+                new SugarParameter("@enabled", (int)PayAccountStatusEnum.Enabled),
+                new SugarParameter("@expired", (int)PayOrderStatusEnum.Expired),
+                new SugarParameter("@tierNormal", (int)PayAccountTierEnum.Normal),
+                new SugarParameter("@tierLarge", (int)PayAccountTierEnum.Large),
+                new SugarParameter("@normalMaxOrders", PayConst.NormalAccountMaxNonExpiredOrders));
+            allocatable = flags.Count > 0 && flags[0] == 1;
+        }
+
+        return new CapacityOutput
+        {
+            Type = typeCode,
+            AvailableAmount = available,
+            MaxSingleAmount = maxSingle,
+            Allocatable = allocatable,
+            AsOf = DateTime.Now
+        };
+    }
+
+    /// <summary>capacity 合计行</summary>
+    private sealed class CapacitySumRow
+    {
+        public decimal Available { get; set; }
+        public decimal MaxSingle { get; set; }
+    }
+
     // ─────────────────────────── 内部实现 ───────────────────────────
 
     /// <summary>
@@ -313,8 +422,9 @@ public class PayAllocateService : ITransient
     /// 详见 <see cref="TryLockQuotaAsync"/> 的备注。
     /// </para>
     /// <para>
-    /// 候选排序 <c>ORDER BY 剩余 ASC, CreateTime ASC</c>：在「剩余 ≥ 请求金额」的约束下，
-    /// 最小化剩余 = 最小化 |剩余 − 金额|，即最佳适配（F2.2）；剩余相同时按创建时间，保证规则确定可复现。
+    /// 候选排序（F2.2）：硬过滤后按 <c>DispatchMode</c>——混用默认可优先轮询组；
+    /// 轮询按 <c>LastMatchedAt</c> 升序（预占同语句触达排到队尾）；
+    /// 权重优选按空过期升序、最近成功降序、MinAmount 降序、剩余 ASC、CreateTime ASC。
     /// </para>
     /// <para>
     /// <b>状态置位同语句完成</b>（F1.4）：预占后剩余恰好归零时，<c>CASE</c> 分支把 <c>Status</c> 一并置为
@@ -351,6 +461,10 @@ public class PayAllocateService : ITransient
         // 不再置 InUse：只锁额度；普通账号非过期订单数 < 2；大额不限次数。
         // MinAmount>0：请求金额须 ≥ 最小金额（硬门槛），且 ORDER BY MinAmount DESC 优先占高门槛码。
         // Expired=4 不占名额。子查询与外层均再判次数，防并发超发。
+        // 调度：RoundRobin 按 LastMatchedAt 升序（匹配后同语句触达排到队尾）；
+        //       Weighted 保留 EmptyExpireCount / LastSuccessTime / 最佳适配。
+        // PreferRoundRobinWhenMixed：同 Type 混用时轮询组优先（配置 PayCenter:Dispatch）。
+        var preferRr = PayDispatch.DispatchOptions.PreferRoundRobinWhenMixed ? 1 : 0;
         const string sql = @"
 UPDATE pay_account
    SET LockedQuota = LockedQuota + @amount,
@@ -358,6 +472,10 @@ UPDATE pay_account
                        WHEN TotalQuota <= UsedQuota + LockedQuota + @amount THEN @exhausted
                        ELSE @enabled
                      END,
+       LastMatchedAt = CASE
+                         WHEN COALESCE(DispatchMode, @weighted) = @rr THEN @now
+                         ELSE LastMatchedAt
+                       END,
        UpdateTime  = @now
  WHERE Id = (
         SELECT Id
@@ -376,7 +494,16 @@ UPDATE pay_account
                          AND o.Status <> @expired
                     ) < @normalMaxOrders
                )
-         ORDER BY a.EmptyExpireCount ASC,
+         ORDER BY CASE
+                    WHEN @preferRr = 1 AND COALESCE(a.DispatchMode, @weighted) = @rr THEN 0
+                    WHEN @preferRr = 1 THEN 1
+                    ELSE 0
+                  END,
+                  CASE
+                    WHEN COALESCE(a.DispatchMode, @weighted) = @rr
+                    THEN COALESCE(a.LastMatchedAt, '-infinity'::timestamp)
+                  END ASC NULLS LAST,
+                  a.EmptyExpireCount ASC,
                   a.LastSuccessTime DESC NULLS LAST,
                   COALESCE(a.MinAmount, 0) DESC,
                   (a.TotalQuota - a.UsedQuota - a.LockedQuota) ASC,
@@ -408,7 +535,10 @@ RETURNING Id;";
             new SugarParameter("@expired", (int)PayOrderStatusEnum.Expired),
             new SugarParameter("@tierNormal", (int)PayAccountTierEnum.Normal),
             new SugarParameter("@tierLarge", (int)PayAccountTierEnum.Large),
-            new SugarParameter("@normalMaxOrders", PayConst.NormalAccountMaxNonExpiredOrders));
+            new SugarParameter("@normalMaxOrders", PayConst.NormalAccountMaxNonExpiredOrders),
+            new SugarParameter("@weighted", (int)PayDispatchModeEnum.Weighted),
+            new SugarParameter("@rr", (int)PayDispatchModeEnum.RoundRobin),
+            new SugarParameter("@preferRr", preferRr));
 
         return ids.Count > 0 ? ids[0] : null;
     }

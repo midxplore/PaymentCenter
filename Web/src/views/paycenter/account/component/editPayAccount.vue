@@ -99,6 +99,15 @@
 					</el-form-item>
 				</el-col>
 				<el-col :xs="24" :sm="24" :md="24" :lg="24" :xl="24" class="mb20">
+					<el-form-item label="调度方式" prop="dispatchMode" :rules="[{ required: true, message: '调度方式不能为空', trigger: 'change' }]">
+						<el-select v-model="state.ruleForm.dispatchMode" placeholder="调度方式" style="width: 100%">
+							<el-option label="权重优选" :value="1" />
+							<el-option label="轮询" :value="2" />
+						</el-select>
+						<div class="field-tip">人头码建议选「轮询」（匹配后排到队尾）；「权重优选」优先最近成功、空过期少的账号。</div>
+					</el-form-item>
+				</el-col>
+				<el-col :xs="24" :sm="24" :md="24" :lg="24" :xl="24" class="mb20">
 					<el-form-item label="最小金额" prop="minAmount">
 						<el-input-number v-model="state.ruleForm.minAmount" :min="0" :precision="2" :step="100" style="width: 100%" />
 						<div class="field-tip">0 或不填表示不限制；大于 0 时，低于该金额的订单不会匹配到本账号。</div>
@@ -110,12 +119,20 @@
 					</el-form-item>
 				</el-col>
 				<el-col v-else :xs="24" :sm="24" :md="24" :lg="24" :xl="24" class="mb20">
-					<el-form-item label="账号状态" prop="status" :rules="[{ required: true, message: '账号状态不能为空', trigger: 'change' }]">
-						<el-select v-model="state.ruleForm.status" placeholder="账号状态" style="width: 100%">
-							<!-- 「已用完」由系统按额度自动判定，不提供手工设置 -->
+					<el-form-item label="账号状态" prop="status" :rules="statusSystemManaged ? [] : [{ required: true, message: '账号状态不能为空', trigger: 'change' }]">
+						<el-select
+							v-if="!statusSystemManaged"
+							v-model="state.ruleForm.status"
+							placeholder="账号状态"
+							style="width: 100%"
+						>
+							<!-- 「已用完 / 占用中」由系统维护，不提供手工设置 -->
 							<el-option label="启用" :value="1" />
 							<el-option label="停用" :value="2" />
 						</el-select>
+						<el-tag v-else :type="state.ruleForm.status === 3 ? 'danger' : 'warning'">
+							{{ state.ruleForm.status === 3 ? '已用完（系统维护，可改调度等方式）' : '占用中（系统维护，可改调度等方式）' }}
+						</el-tag>
 					</el-form-item>
 				</el-col>
 				<el-col :xs="24" :sm="24" :md="24" :lg="24" :xl="24" class="mb20">
@@ -166,6 +183,11 @@ const state = reactive({
 // 有 Id 即编辑态（类型仍不可改；账号文本 / 收款码 / 备注 / 状态可改）
 const isEdit = computed(() => state.ruleForm.id != undefined && state.ruleForm.id > 0);
 const isBank = computed(() => String(state.ruleForm.type || '').toLowerCase() === 'bank');
+/** 已用完=3 / 占用中=4：系统维护，编辑其它字段时勿当手工改状态提交 */
+const statusSystemManaged = computed(() => {
+	const s = Number(state.ruleForm.status);
+	return s === 3 || s === 4;
+});
 const accountNoRules = computed(() =>
 	isBank.value ? [{ required: true, message: '银行卡账号不能为空', trigger: 'blur' }] : []
 );
@@ -250,10 +272,16 @@ const openDialog = (row: any) => {
 		state.ruleForm.remark = '';
 	}
 	if (!state.ruleForm.accountTier) state.ruleForm.accountTier = 1;
+	// 接口可能缺字段或回字符串；统一成数字，避免 el-option 对不上显示空白
+	const dm = Number(state.ruleForm.dispatchMode);
+	state.ruleForm.dispatchMode = dm === 2 ? 2 : 1;
 	if (state.ruleForm.minAmount == null || state.ruleForm.minAmount === '') state.ruleForm.minAmount = 0;
+	const st = Number(state.ruleForm.status);
+	if (st === 1 || st === 2 || st === 3 || st === 4) state.ruleForm.status = st;
 	syncAccountInfo();
 	state.isShowDialog = true;
-	ruleFormRef.value?.resetFields();
+	// 勿在赋值后 resetFields：会清掉刚写入的 dispatchMode，下拉显示空白
+	nextTick(() => ruleFormRef.value?.clearValidate());
 };
 
 // 关闭弹窗
@@ -306,6 +334,7 @@ const submit = () => {
 					remark,
 					status: state.ruleForm.status,
 					accountTier: state.ruleForm.accountTier || 1,
+					dispatchMode: state.ruleForm.dispatchMode || 1,
 					minAmount: Number(state.ruleForm.minAmount) || 0,
 					qrImageUrl,
 				});
@@ -320,6 +349,7 @@ const submit = () => {
 					qrImageUrl,
 					totalQuota: state.ruleForm.totalQuota,
 					accountTier: state.ruleForm.accountTier || 1,
+					dispatchMode: state.ruleForm.dispatchMode || 1,
 					minAmount: Number(state.ruleForm.minAmount) || 0,
 					remark,
 				});

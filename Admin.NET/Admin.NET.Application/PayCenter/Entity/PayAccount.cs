@@ -105,6 +105,19 @@ public class PayAccount : EntityBase
     public virtual decimal MinAmount { get; set; }
 
     /// <summary>
+    /// 匹配调度方式：权重优选 / 轮询（与分层正交）
+    /// </summary>
+    /// <remarks>ColumnName 与 PG 小写列对齐，避免未转下划线时映射不到、接口一直回 0/空。</remarks>
+    [SugarColumn(ColumnName = "dispatchmode", ColumnDescription = "调度方式", DefaultValue = "1")]
+    public virtual PayDispatchModeEnum DispatchMode { get; set; } = PayDispatchModeEnum.Weighted;
+
+    /// <summary>
+    /// 最近一次被匹配预占的时间；仅轮询账号在 allocate 成功时更新，用于排到队尾
+    /// </summary>
+    [SugarColumn(ColumnName = "lastmatchedat", ColumnDescription = "最近匹配时间", IsNullable = true)]
+    public virtual DateTime? LastMatchedAt { get; set; }
+
+    /// <summary>
     /// 备注
     /// </summary>
     [SugarColumn(ColumnDescription = "备注（收银台 Notice，可含受限 HTML）", Length = PayConst.AccountRemarkLength, IsNullable = true)]

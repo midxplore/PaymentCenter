@@ -65,7 +65,8 @@ public class PayScopeResolver : IOpenAccessScopeResolver, ISingleton
 
         if (path.Contains("/notify", StringComparison.OrdinalIgnoreCase)) return PayConst.ScopeNotify;
         if (path.Contains("/allocate", StringComparison.OrdinalIgnoreCase) ||
-            path.Contains("/status", StringComparison.OrdinalIgnoreCase)) return PayConst.ScopeAllocate;
+            path.Contains("/status", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/capacity", StringComparison.OrdinalIgnoreCase)) return PayConst.ScopeAllocate;
 
         // ★ 落在 /api/pay* 下但没声明、也匹配不上已知模式 → **fail-closed**。
         //

@@ -62,6 +62,29 @@ public class AllocateOutput
 }
 
 /// <summary>
+/// 可用额度查询输出（只读快照，不预占）
+/// </summary>
+public class CapacityOutput
+{
+    /// <summary>收款类型（回显）</summary>
+    public string Type { get; set; }
+
+    /// <summary>可匹配账号剩余额度合计（已扣在途预占）</summary>
+    [JsonConverter(typeof(AmountStringConverter))]
+    public decimal AvailableAmount { get; set; }
+
+    /// <summary>单码最大剩余额度</summary>
+    [JsonConverter(typeof(AmountStringConverter))]
+    public decimal MaxSingleAmount { get; set; }
+
+    /// <summary>传了 amount 时：此刻是否至少有一码可匹配该金额；未传则为 null</summary>
+    public bool? Allocatable { get; set; }
+
+    /// <summary>快照时间</summary>
+    public DateTime AsOf { get; set; }
+}
+
+/// <summary>
 /// 收银台展示输出（匿名 token 门禁）
 /// </summary>
 public class CashierOrderOutput

@@ -88,6 +88,11 @@ public class AddPayAccountInput
     public decimal MinAmount { get; set; }
 
     /// <summary>
+    /// 调度方式（默认权重优选）
+    /// </summary>
+    public PayDispatchModeEnum DispatchMode { get; set; } = PayDispatchModeEnum.Weighted;
+
+    /// <summary>
     /// 备注
     /// </summary>
     [MaxLength(PayConst.AccountRemarkLength, ErrorMessage = "备注过长")]
@@ -156,6 +161,11 @@ public class UpdatePayAccountInput : BaseIdInput
     /// </summary>
     [Range(typeof(decimal), "0", "79228162514264337593543950335", ErrorMessage = "最小金额不能为负")]
     public decimal? MinAmount { get; set; }
+
+    /// <summary>
+    /// 调度方式（null 不修改）
+    /// </summary>
+    public PayDispatchModeEnum? DispatchMode { get; set; }
 }
 
 /// <summary>
@@ -234,6 +244,10 @@ public class PayAccountOutput
     /// 匹配最小金额（0=不限制）
     /// </summary>
     public decimal MinAmount { get; set; }
+
+    public PayDispatchModeEnum DispatchMode { get; set; }
+
+    public string DispatchModeText { get; set; }
 
     public string Remark { get; set; }
 

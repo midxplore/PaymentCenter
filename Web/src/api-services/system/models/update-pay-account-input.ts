@@ -106,4 +106,12 @@ export interface UpdatePayAccountInput {
      * @memberof UpdatePayAccountInput
      */
     minAmount?: number | null;
+
+    /**
+     * 调度方式（1权重优选 / 2轮询；null 不修改）
+     *
+     * @type {number}
+     * @memberof UpdatePayAccountInput
+     */
+    dispatchMode?: number | null;
 }

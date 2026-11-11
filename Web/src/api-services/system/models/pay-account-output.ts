@@ -156,6 +156,22 @@ export interface PayAccountOutput {
     minAmount?: number;
 
     /**
+     * 调度方式（1权重优选 / 2轮询）
+     *
+     * @type {number}
+     * @memberof PayAccountOutput
+     */
+    dispatchMode?: number;
+
+    /**
+     * 调度方式文案
+     *
+     * @type {string}
+     * @memberof PayAccountOutput
+     */
+    dispatchModeText?: string | null;
+
+    /**
      * 备注
      *
      * @type {string}

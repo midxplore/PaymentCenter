@@ -101,6 +101,14 @@ export interface AddPayAccountInput {
     minAmount?: number;
 
     /**
+     * 调度方式（1权重优选 / 2轮询，默认权重优选）
+     *
+     * @type {number}
+     * @memberof AddPayAccountInput
+     */
+    dispatchMode?: number;
+
+    /**
      * 备注
      *
      * @type {string}

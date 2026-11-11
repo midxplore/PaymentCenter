@@ -72,6 +72,8 @@ public class PayAccountService : IDynamicApiController, ITransient
             item.StatusText = item.Status.GetDescription();
             if (item.AccountTier == 0) item.AccountTier = PayAccountTierEnum.Normal;
             item.AccountTierText = item.AccountTier.GetDescription();
+            item.DispatchMode = PayDispatch.Normalize(item.DispatchMode == 0 ? PayDispatchModeEnum.Weighted : item.DispatchMode);
+            item.DispatchModeText = item.DispatchMode.GetDescription() ?? (item.DispatchMode == PayDispatchModeEnum.RoundRobin ? "轮询" : "权重优选");
             item.QrImageUrl ??= "";
         }
         return paged;
@@ -92,6 +94,8 @@ public class PayAccountService : IDynamicApiController, ITransient
         output.StatusText = account.Status.GetDescription();
         if (output.AccountTier == 0) output.AccountTier = PayAccountTierEnum.Normal;
         output.AccountTierText = output.AccountTier.GetDescription();
+        output.DispatchMode = PayDispatch.Normalize(output.DispatchMode == 0 ? PayDispatchModeEnum.Weighted : output.DispatchMode);
+        output.DispatchModeText = output.DispatchMode.GetDescription() ?? (output.DispatchMode == PayDispatchModeEnum.RoundRobin ? "轮询" : "权重优选");
         output.QrImageUrl ??= "";
         return output;
     }
@@ -131,13 +135,14 @@ public class PayAccountService : IDynamicApiController, ITransient
             Status = PayAccountStatusEnum.Enabled,
             AccountTier = input.AccountTier == 0 ? PayAccountTierEnum.Normal : input.AccountTier,
             MinAmount = NormalizeMinAmount(input.MinAmount, input.TotalQuota),
+            DispatchMode = PayDispatch.ResolveNewAccountMode(input.DispatchMode),
             Remark = PayHtmlSanitize.Sanitize(input.Remark)
         };
         await _payAccountRep.InsertAsync(account);
 
         await _payAuditService.WriteAsync(PayAuditActionEnum.AccountAdd, nameof(PayAccount), account.Id,
             account.Type, null,
-            new { account.Type, account.TotalQuota, account.MinAmount, account.Status, HasQrImage = account.QrImageUrl != null },
+            new { account.Type, account.TotalQuota, account.MinAmount, account.DispatchMode, account.Status, HasQrImage = account.QrImageUrl != null },
             $"新增收款账号，初始额度 {account.TotalQuota:0.00}");
 
         return account.Id;
@@ -169,16 +174,23 @@ public class PayAccountService : IDynamicApiController, ITransient
     {
         var account = await _payAccountRep.GetByIdAsync(input.Id) ?? throw Oops.Oh(ErrorCodeEnum.API_ACCOUNT_NOT_FOUND);
 
-        if (input.Status == PayAccountStatusEnum.Exhausted || input.Status == PayAccountStatusEnum.InUse)
-            throw Oops.Oh(ErrorCodeEnum.API_STATUS_READONLY);
+        // 已用完 / 占用中由系统维护：允许改调度方式等字段，但不得手工改成这两种状态；
+        // 若账号已是这两种，编辑时保留原状态（勿因表单原样回传而拒整单）。
+        var statusSystemManaged = account.Status is PayAccountStatusEnum.Exhausted or PayAccountStatusEnum.InUse;
+        if (!statusSystemManaged)
+        {
+            if (input.Status is PayAccountStatusEnum.Exhausted or PayAccountStatusEnum.InUse)
+                throw Oops.Oh(ErrorCodeEnum.API_STATUS_READONLY);
 
-        if (input.Status == PayAccountStatusEnum.Enabled && GetRemainingQuota(account) <= 0)
-            throw Oops.Oh(ErrorCodeEnum.API_QUOTA_EXHAUSTED);
+            if (input.Status == PayAccountStatusEnum.Enabled && GetRemainingQuota(account) <= 0)
+                throw Oops.Oh(ErrorCodeEnum.API_QUOTA_EXHAUSTED);
+        }
 
         var before = new
         {
             account.Remark,
             account.Status,
+            account.DispatchMode,
             HasAccountInfo = !string.IsNullOrEmpty(account.AccountInfo),
             HasQrImage = !string.IsNullOrEmpty(account.QrImageUrl)
         };
@@ -212,11 +224,14 @@ public class PayAccountService : IDynamicApiController, ITransient
             account.QrImageUrl ?? "");
 
         account.Remark = PayHtmlSanitize.Sanitize(input.Remark);
-        account.Status = input.Status;
+        if (!statusSystemManaged)
+            account.Status = input.Status;
         if (input.AccountTier.HasValue && input.AccountTier.Value != 0)
             account.AccountTier = input.AccountTier.Value;
         if (input.MinAmount.HasValue)
             account.MinAmount = NormalizeMinAmount(input.MinAmount.Value, account.TotalQuota);
+        if (input.DispatchMode.HasValue && input.DispatchMode.Value != 0)
+            account.DispatchMode = PayDispatch.Normalize(input.DispatchMode.Value);
         await _payAccountRep.AsUpdateable(account)
             .UpdateColumns(u => new
             {
@@ -229,6 +244,7 @@ public class PayAccountService : IDynamicApiController, ITransient
                 u.Status,
                 u.AccountTier,
                 u.MinAmount,
+                u.DispatchMode,
                 u.QrImageUrl,
                 u.UpdateTime,
                 u.UpdateUserId,
@@ -244,6 +260,7 @@ public class PayAccountService : IDynamicApiController, ITransient
                 account.Status,
                 account.AccountTier,
                 account.MinAmount,
+                account.DispatchMode,
                 HasAccountInfo = !string.IsNullOrEmpty(account.AccountInfo),
                 HasQrImage = !string.IsNullOrEmpty(account.QrImageUrl)
             },

@@ -5,6 +5,12 @@
 		// 收银台对外 Base URL（无尾斜杠），如 https://pay.example.com
 		// 生产必配（未配 fail-closed）；Development 未配时回落当前请求 Host
 		// 收银台警示文案取自收款账号 Remark（可含受限 HTML），勿在此配置
-		"CashierPublicBaseUrl": "https://apii.007lc.com"
+		"CashierPublicBaseUrl": "https://apii.007lc.com",
+		// 匹配调度：DefaultMode=Weighted|RoundRobin；PreferRoundRobinWhenMixed=同 Type 混用时轮询优先
+		// 单账号实际策略以 pay_account.dispatchmode 为准
+		"Dispatch": {
+			"DefaultMode": "Weighted",
+			"PreferRoundRobinWhenMixed": true
+		}
 	}
 }
